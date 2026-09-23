@@ -77,9 +77,10 @@ client.on('messageCreate', async (message) => {
             });
 
             // Pasamos el flujo de datos directo de Axios en lugar de la URL de texto
-            const resource = createAudioResource(response.data, {
-                inputType: StreamType.Arbitrary
-            });
+          const resource = createAudioResource(response.data, {
+            inputType: StreamType.Arbitrary,
+            inlineVolume: true
+});
 
             player.play(resource);
             connection.subscribe(player);
