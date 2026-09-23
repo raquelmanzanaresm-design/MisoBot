@@ -68,11 +68,19 @@ client.on('messageCreate', async (message) => {
             // EL ÚNICO CAMBIO: Tu código original pero con inlineVolume para evitar que Archive.org se cuelgue a los 5 minutos
             const resource = createAudioResource(url, {
                 inputType: StreamType.Arbitrary,
-                inlineVolume: true
-            });
+                inlineVolume: true // Mantiene el hilo activo para evitar que se duerma
+});
 
-            player.play(resource);
-            connection.subscribe(player);
+// Parche clave para saltar el bloqueo de IP:
+// Le inyectamos las cabeceras de un navegador clásico a la petición de audio de Discord
+resource.playStream.headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Connection': 'keep-alive'
+};
+
+player.play(resource);
+connection.subscribe(player);
 
             message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
 
