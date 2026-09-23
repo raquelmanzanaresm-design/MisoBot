@@ -3,7 +3,9 @@ import {
     joinVoiceChannel, 
     createAudioPlayer, 
     createAudioResource, 
-    StreamType
+    StreamType,
+    entersState,
+    VoiceConnectionStatus
 } from '@discordjs/voice';
 import express from 'express'; 
 import fs from 'fs';
@@ -17,7 +19,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ARCHIVO_RUTA = path.join('/tmp', 'cancion_actual.mp3');
 
-// Render servirá la canción a través de este enlace web clásico (TCP)
 app.get('/stream.mp3', (req, res) => {
     if (fs.existsSync(ARCHIVO_RUTA)) {
         const stat = fs.statSync(ARCHIVO_RUTA);
@@ -68,32 +69,45 @@ client.on('messageCreate', async (message) => {
         if (!voiceChannel) return message.reply('❌ ¡Únete primero a un canal de voz!');
 
         try {
-            message.reply('⏳ Descargando de Archive.org y generando enlace web de transmisión segura...');
+            message.reply('⏳ Descargando de Archive.org y forzando enlace de voz seguro...');
 
-            // Limpieza preventiva
             if (fs.existsSync(ARCHIVO_RUTA)) {
                 try { fs.unlinkSync(ARCHIVO_RUTA); } catch(e){}
             }
 
             const fileStream = fs.createWriteStream(ARCHIVO_RUTA);
 
-            // Descargamos de Archive como navegador web normal
             https.get(url, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
             }, (response) => {
                 response.pipe(fileStream);
 
-                fileStream.on('finish', () => {
+                fileStream.on('finish', async () => {
                     fileStream.close();
 
                     const connection = joinVoiceChannel({
                         channelId: voiceChannel.id,
                         guildId: message.guild.id,
                         adapterCreator: message.guild.voiceAdapterCreator,
+                        selfDeaf: false, 
                     });
 
-                    // IMPORTANTE: Le pedimos al recurso de Discord que consuma la canción 
-                    // llamando a la propia URL del servidor web interno en lugar de usar la red UDP directa
+                    // ◄ PARCHE DE RED: Forzar la comunicación entre Render y Discord
+                    connection.on('stateChange', (oldState, newState) => {
+                        const oldNetworking = Reflect.get(oldState, 'networking');
+                        const newNetworking = Reflect.get(newState, 'networking');
+                        const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+                            const newUDP = Reflect.get(newNetworkState, 'udp');
+                            clearInterval(newUDP?.keepAliveInterval);
+                        };
+                        oldNetworking?.off('stateChange', networkStateChangeHandler);
+                        newNetworking?.on('stateChange', networkStateChangeHandler);
+                    });
+
+                    // ◄ CONTROL DE ESTADO: Esperamos a que la conexión esté lista antes de reproducir
+                    await entersState(connection, VoiceConnectionStatus.Ready, 15000);
+                    connection.subscribe(player);
+
                     const miUrlDeRender = `http://127.0.0.1:${PORT}/stream.mp3`;
                     
                     const resource = createAudioResource(miUrlDeRender, {
@@ -101,9 +115,8 @@ client.on('messageCreate', async (message) => {
                     });
 
                     player.play(resource);
-                    connection.subscribe(player);
 
-                    message.channel.send(`🎵 ¡Música estabilizada! Escuchando transmisión local en **${voiceChannel.name}**.`);
+                    message.channel.send(`🎵 ¡Música estabilizada! Escuchando transmisión local sin cortes en **${voiceChannel.name}**.`);
                 });
             });
 
@@ -121,5 +134,7 @@ client.on('messageCreate', async (message) => {
         message.reply('⏹️ Música detenida.');
     }
 });
+
+client.login(process.env.DISCORD_TOKEN);
 
 client.login(process.env.DISCORD_TOKEN);
