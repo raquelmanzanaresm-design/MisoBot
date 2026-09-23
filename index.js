@@ -94,4 +94,4 @@ client.on('messageCreate', async (message) => {
 });
 
 // Coloca aquí tu token real del portal de desarrolladores de Discord
-client.login('TU_NUEVO_TOKEN_AQUÍ');
+client.login(process.env.DISCORD_TOKEN);
