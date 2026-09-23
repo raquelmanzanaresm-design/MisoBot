@@ -1,3 +1,7 @@
+import ffmpegPath from 'ffmpeg-static';
+// Truco para Render: Seteamos la ruta en el entorno global antes de cargar cualquier otra librería
+process.env.FFMPEG_PATH = ffmpegPath;
+
 import { Client, GatewayIntentBits } from 'discord.js';
 import { 
     joinVoiceChannel, 
@@ -9,7 +13,6 @@ import {
 } from '@discordjs/voice';
 import express from 'express'; 
 import prism from 'prism-media'; 
-import ffmpegPath from 'ffmpeg-static'; 
 
 // ==========================================
 // 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
@@ -39,7 +42,6 @@ const client = new Client({
 
 const player = createAudioPlayer();
 
-// Logs para saber exactamente qué está haciendo el reproductor en Render
 player.on(AudioPlayerStatus.Playing, () => console.log('[REPRODUCTOR] ¡Sonido enviado con éxito!'));
 player.on('error', error => console.error('[REPRODUCTOR ERROR]', error.message));
 
@@ -71,15 +73,13 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Forzar suscripción inmediata
             connection.subscribe(player);
 
-            // PARCHE CRÍTICO: Forzar a Discord a abrir los puertos de audio
             connection.on(VoiceConnectionStatus.Ready, () => {
                 console.log('[CONEXIÓN] Canal de voz listo para recibir audio.');
             });
 
-            // Configurar transmisión FFmpeg con autoreconexión de red
+            // Configurar transmisión FFmpeg con autoreconexión de red activa
             const ffmpegStream = new prism.FFmpeg({
                 binary: ffmpegPath,
                 args: [
@@ -100,7 +100,6 @@ client.on('messageCreate', async (message) => {
                 inputType: StreamType.Raw
             });
 
-            // Reproducir el recurso
             player.play(resource);
 
             message.channel.send(`🎵 Transmitiendo audio de Archive.org en **${voiceChannel.name}**`);
