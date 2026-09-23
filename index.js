@@ -3,23 +3,21 @@ import {
     joinVoiceChannel, 
     createAudioPlayer, 
     createAudioResource, 
-    StreamType
+    StreamType,
+    AudioPlayerStatus
 } from '@discordjs/voice';
 import express from 'express'; 
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
 
 // ==========================================
 // 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
 // ==========================================
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-    res.send('🤖 ¡El Bot de Música está encendido y funcionando!');
-});
-
-app.listen(PORT, () => {
-    console.log(`[WEB] Servidor web interno corriendo en el puerto ${PORT}`);
-});
+app.get('/', (req, res) => res.send('🤖 ¡Bot de Descarga Temporal en Render Activo y Gratis!'));
+app.listen(PORT);
 
 // ==========================================
 // 2. CONFIGURACIÓN DEL BOT DE DISCORD
@@ -34,9 +32,23 @@ const client = new Client({
 });
 
 const player = createAudioPlayer();
+let archivoActual = null; // Guardará la ruta de la canción para poder borrarla luego
 
 client.once('ready', () => {
     console.log(`[BOT] Conectado con éxito a Discord como ${client.user.tag}`);
+});
+
+// Evento que detecta cuando una canción termina para borrar el archivo del disco de Render
+player.on(AudioPlayerStatus.Idle, () => {
+    if (archivoActual && fs.existsSync(archivoActual)) {
+        try {
+            fs.unlinkSync(archivoActual);
+            console.log('[DISCO] Archivo temporal eliminado con éxito tras terminar la canción.');
+            archivoActual = null;
+        } catch (err) {
+            console.error('Error al eliminar archivo automático:', err);
+        }
+    }
 });
 
 client.on('messageCreate', async (message) => {
@@ -50,47 +62,71 @@ client.on('messageCreate', async (message) => {
         }
 
         const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) {
-            return message.reply('❌ ¡Debes unirte primero a un canal de voz!');
-        }
+        if (!voiceChannel) return message.reply('❌ ¡Debes unirte primero a un canal de voz!');
 
         try {
-            message.reply('⏳ Conectando al canal de voz y cargando el audio...');
+            // Si había una canción sonando antes, la borramos para no acumular basura
+            if (archivoActual && fs.existsSync(archivoActual)) {
+                fs.unlinkSync(archivoActual);
+            }
 
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: message.guild.id,
-                adapterCreator: message.guild.voiceAdapterCreator,
+            // Definimos la ruta en la carpeta /tmp de Linux (Render permite escribir aquí de forma gratuita)
+            archivoActual = path.join('/tmp', `music_${message.guild.id}.mp3`);
+            const fileStream = fs.createWriteStream(archivoActual);
+
+            message.reply('⏳ Descargando pista completa a Render para saltar el límite de 5 minutos. Por favor, espera un momento...');
+
+            // Descarga express directa como navegador web
+            https.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' }
+            }, (response) => {
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+
+                    // Una vez guardado en el disco de Render, nos conectamos a Discord
+                    const connection = joinVoiceChannel({
+                        channelId: voiceChannel.id,
+                        guildId: message.guild.id,
+                        adapterCreator: message.guild.voiceAdapterCreator,
+                    });
+
+                    // Leemos el archivo local nativo (Render procesa esto de forma instantánea)
+                    const resource = createAudioResource(archivoActual, {
+                        inputType: StreamType.Arbitrary
+                    });
+
+                    player.play(resource);
+                    connection.subscribe(player);
+
+                    message.channel.send(`🎵 ¡Descarga completada! Reproduciendo localmente en **${voiceChannel.name}** de forma indefinida.`);
+                });
             });
-
-            // Volvemos a tu método original instantáneo de pasar la URL directa, 
-            // pero activamos inlineVolume para forzar a que procese los datos segundo a segundo
-            // evitando que Archive.org o Render asuman que la conexión está inactiva a los 5 min.
-            const resource = createAudioResource(url, {
-                inputType: StreamType.Arbitrary,
-                inlineVolume: true 
-            });
-
-            player.play(resource);
-            connection.subscribe(player);
-
-            message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
 
         } catch (error) {
-            console.error("Error al reproducir el audio:", error);
-            message.channel.send('❌ Hubo un error al intentar procesar el archivo de música.');
+            console.error("Error en descarga local:", error);
+            message.channel.send('❌ Hubo un error al intentar descargar el archivo al servidor.');
         }
     }
 
     if (message.content === '!stop') {
         player.stop();
+        // Borramos el archivo inmediatamente si el usuario detiene el bot manualmente
+        if (archivoActual && fs.existsSync(archivoActual)) {
+            try {
+                fs.unlinkSync(archivoActual);
+                archivoActual = null;
+            } catch (e) {}
+        }
+        
         const connection = joinVoiceChannel({
             channelId: message.member.voice.channel?.id,
             guildId: message.guild.id,
             adapterCreator: message.guild.voiceAdapterCreator,
         });
         if (connection) connection.destroy();
-        message.reply('⏹️ Música detenida.');
+        message.reply('⏹️ Música detenida y almacenamiento limpio.');
     }
 });
 
