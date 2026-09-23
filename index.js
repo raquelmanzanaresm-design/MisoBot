@@ -66,12 +66,9 @@ client.on('messageCreate', async (message) => {
             });
 
             // Cargamos el recurso de audio directamente desde la URL de Archive.org
-            const urlPuente = `https://herokuapp.com{url}`;
-
-const resource = createAudioResource(urlPuente, {
-    inputType: StreamType.Arbitrary,
-    inlineVolume: true // Activamos esto para mantener despierto el canal de sonido
-});
+            const resource = createAudioResource(url, {
+                inputType: StreamType.Arbitrary
+            });
 
             player.play(resource);
             connection.subscribe(player);
@@ -97,7 +94,4 @@ const resource = createAudioResource(urlPuente, {
 });
 
 // Coloca aquí tu token real del portal de desarrolladores de Discord
-client.login(process.env.DISCORD_TOKEN);
-
-// Coloca aquí tu token real del portal de desarrolladores de Discord
-client.login(process.env.DISCORD_TOKEN);
+client.login('MTU1MDQwNDk3MjEzMzQ5MDY5OQ.G-9GkQ.aQwBZhDgeweucmF4D93n6P9Ultf5U6CtlIWktc');
