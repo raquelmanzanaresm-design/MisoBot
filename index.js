@@ -6,7 +6,7 @@ import {
     StreamType
 } from '@discordjs/voice';
 import express from 'express'; 
-import axios from 'axios'; // Importamos Axios para evitar los bloqueos de Archive.org
+import prism from 'prism-media'; // Importamos prism-media para el control total de FFmpeg
 
 // ==========================================
 // 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
@@ -15,7 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 ¡El Bot de Música está encendido y funcionando 24/7!');
+    res.send('🤖 ¡El Bot de Música está encendido y funcionando con reconexión activa!');
 });
 
 app.listen(PORT, () => {
@@ -47,7 +47,7 @@ client.on('messageCreate', async (message) => {
         const url = message.content.replace('!play', '').trim();
 
         if (!url || !url.startsWith('http')) {
-            return message.reply('❌ Por favor, proporciona un enlace directo a tu MP3 de Archive.org. Ejemplo: `!play URL`');
+            return message.reply('❌ Por favor, proporciona un enlace directo a tu MP3 de Archive.org.');
         }
 
         const voiceChannel = message.member.voice.channel;
@@ -56,7 +56,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('⏳ Conectando al canal de voz y solicitando transmisión estable desde Archive.org...');
+            message.reply('⏳ Conectando al canal de voz y activando transmisión con autoreconexión...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
@@ -64,32 +64,35 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Solicitamos el archivo simulando ser un navegador web real y manteniendo la conexión viva
-            const response = await axios({
-                method: 'get',
-                url: url,
-                responseType: 'stream',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': '*/*',
-                    'Connection': 'keep-alive'
-                }
+            // Creamos un proceso de FFmpeg con argumentos de reconexión forzada y simulación de navegador
+            const ffmpegStream = new prism.FFmpeg({
+                args: [
+                    '-reconnect', '1',                  // Fuerza a reconectar si se corta
+                    '-reconnect_streamed', '1',         // Específico para enlaces de música en la nube
+                    '-reconnect_delay_max', '4',        // Tiempo máximo de espera para reconectar (4 segundos)
+                    '-headers', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n',
+                    '-i', url,                          // La URL de Archive.org
+                    '-analyze2pass', '0',
+                    '-loglevel', '0',
+                    '-f', 's16le',                      // Formato PCM requerido por Discord.js
+                    '-ar', '48000',
+                    '-ac', '2',
+                ],
             });
 
-            // Pasamos el flujo de datos directo de Axios en lugar de la URL de texto
-          const resource = createAudioResource(response.data, {
-            inputType: StreamType.Arbitrary,
-            inlineVolume: true
-});
+            // Convertimos el proceso FFmpeg en un recurso de audio compatible con Discord
+            const resource = createAudioResource(ffmpegStream, {
+                inputType: StreamType.Raw // Usamos RAW porque FFmpeg ya lo convierte a PCM
+            });
 
             player.play(resource);
             connection.subscribe(player);
 
-            message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
+            message.channel.send(`🎵 Reproduciendo audio con protección anticortes en **${voiceChannel.name}**`);
 
         } catch (error) {
             console.error("Error al reproducir el audio:", error);
-            message.channel.send('❌ Hubo un error al intentar conectarse a Archive.org. Verifica que el enlace sea correcto.');
+            message.channel.send('❌ Hubo un error al intentar procesar el archivo con FFmpeg.');
         }
     }
 
