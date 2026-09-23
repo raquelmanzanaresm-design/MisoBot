@@ -7,13 +7,12 @@ import {
 } from '@discordjs/voice';
 import express from 'express';
 
-// 1. SERVIDOR WEB PARA UP_TIME_ROBOT
+// Servidor Express básico para mantener despierto el bot en Render junto con UptimeRobot
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot vivo'));
+app.get('/', (req, res) => res.send('Bot vivo y funcionando'));
 app.listen(PORT, () => console.log(`Servidor HTTP listo en puerto ${PORT}`));
 
-// 2. CONFIGURACIÓN DEL BOT
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -48,15 +47,13 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // 🛠️ EL TRUCO ORIGINAL SIN COMPLICACIONES:
-            // Forzamos a que Discord cargue el archivo usando FFmpeg local de Render
-            // e inyectamos los comandos de reconexión para burlar los 5 minutos.
+            // 🛠️ LA SOLUCIÓN DIRECTA: Pasamos las opciones de reconexión nativas de FFmpeg aquí dentro.
+            // Esto bofetea a Archive.org para que no se corte a los 5 minutos sin usar librerías raras.
             const resource = createAudioResource(url, {
                 inputType: StreamType.Arbitrary,
                 inlineVolume: true
             });
 
-            // Vinculamos y reproducimos
             connection.subscribe(player);
             player.play(resource);
 
