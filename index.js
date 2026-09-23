@@ -1,52 +1,54 @@
 import { Client, GatewayIntentBits } from 'discord.js';
-import {
-    joinVoiceChannel,
-    createAudioPlayer,
-    createAudioResource,
-    StreamType,
-    AudioPlayerStatus
+import { 
+    joinVoiceChannel, 
+    createAudioPlayer, 
+    createAudioResource, 
+    StreamType
 } from '@discordjs/voice';
-import express from 'express';
+import express from 'express'; // Importamos Express para Render
 
-// 1. SERVIDOR WEB PARA MANTENERLO DESPIERTO CON UP_TIME_ROBOT
+// ==========================================
+// 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
+// ==========================================
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot de música activo 24/7'));
-app.listen(PORT, () => console.log(`[WEB] Servidor listo en puerto ${PORT}`));
 
+// Render visitará esta ruta para verificar que el bot sigue despierto
+app.get('/', (req, res) => {
+    res.send('🤖 ¡El Bot de Música está encendido y funcionando 24/7!');
+});
+
+app.listen(PORT, () => {
+    console.log(`[WEB] Servidor web interno corriendo en el puerto ${PORT}`);
+});
+
+// ==========================================
 // 2. CONFIGURACIÓN DEL BOT DE DISCORD
+// ==========================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.GuildVoiceStates 
     ]
 });
 
 const player = createAudioPlayer();
 
-// Monitoreo del reproductor en la consola de Render
-player.on('error', error => {
-    console.error(`[ERROR REPRODUCTOR] Fallo en el flujo: ${error.message}`);
-});
-
-player.on(AudioPlayerStatus.Playing, () => {
-    console.log('[BOT] ¡Emitiendo sonido correctamente en el canal!');
-});
-
 client.once('ready', () => {
-    console.log(`[BOT] Conectado a Discord como ${client.user.tag}`);
+    console.log(`[BOT] Conectado con éxito a Discord como ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+    if (message.author.bot) return; 
 
-    // Comando !play
+    // El comando se usará así en Discord: !play https://archive.org
     if (message.content.startsWith('!play')) {
         const url = message.content.replace('!play', '').trim();
+
         if (!url || !url.startsWith('http')) {
-            return message.reply('❌ Por favor, pon una URL válida de Archive.org.');
+            return message.reply('❌ Por favor, proporciona un enlace directo a tu MP3 de Archive.org. Ejemplo: `!play URL`');
         }
 
         const voiceChannel = message.member.voice.channel;
@@ -55,7 +57,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('🎵 Conectando al canal de voz y cargando el audio desde la nube...');
+            message.reply('⏳ Conectando al canal de voz y cargando el audio desde la nube...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
@@ -63,42 +65,22 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // 🔥 PARCHE DE RED OBLIGATORIO PARA RENDER
-            // Esto reconfigura la red de Discord si se queda congelada al conectar
-            connection.on('stateChange', (oldState, newState) => {
-                const oldNetworking = Reflect.get(oldState, 'networking');
-                const newNetworking = Reflect.get(newState, 'networking');
-                
-                const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
-                    const newReason = Reflect.get(newNetworkState, 'reason');
-                    if (newReason === 'close' && Reflect.get(newNetworkState, 'code') === 4014) {
-                        connection.configureNetworking();
-                    }
-                };
-                
-                if (oldNetworking) oldNetworking.off('stateChange', networkStateChangeHandler);
-                if (newNetworking) newNetworking.on('stateChange', networkStateChangeHandler);
-            });
-
-            // Cargamos el recurso de Archive.org usando el FFmpeg nativo del sistema
+            // Cargamos el recurso de audio directamente desde la URL de Archive.org
             const resource = createAudioResource(url, {
-                inputType: StreamType.Arbitrary,
-                inlineVolume: true
+                inputType: StreamType.Arbitrary
             });
 
-            // Primero vinculamos el reproductor a la llamada, y luego reproducimos
-            connection.subscribe(player);
             player.play(resource);
+            connection.subscribe(player);
 
-            message.channel.send(`🎵 Reproduciendo en **${voiceChannel.name}**`);
+            message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
 
         } catch (error) {
-            console.error("[ERROR GENERAL]", error);
-            message.channel.send('❌ Hubo un error al intentar reproducir.');
+            console.error("Error al reproducir el audio:", error);
+            message.channel.send('❌ Hubo un error al intentar procesar el archivo de música.');
         }
     }
 
-    // Comando !stop
     if (message.content === '!stop') {
         player.stop();
         const connection = joinVoiceChannel({
@@ -111,4 +93,5 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Coloca aquí tu token real del portal de desarrolladores de Discord
+client.login('MTU1MDQwNDk3MjEzMzQ5MDY5OQ.G-9GkQ.aQwBZhDgeweucmF4D93n6P9Ultf5U6CtlIWktc');
