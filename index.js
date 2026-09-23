@@ -1,5 +1,4 @@
 import ffmpegPath from 'ffmpeg-static';
-// Truco para Render: Seteamos la ruta en el entorno global antes de cargar cualquier otra librería
 process.env.FFMPEG_PATH = ffmpegPath;
 
 import { Client, GatewayIntentBits } from 'discord.js';
@@ -8,8 +7,7 @@ import {
     createAudioPlayer, 
     createAudioResource, 
     StreamType,
-    AudioPlayerStatus,
-    VoiceConnectionStatus
+    AudioPlayerStatus
 } from '@discordjs/voice';
 import express from 'express'; 
 import prism from 'prism-media'; 
@@ -21,7 +19,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 ¡El Bot de Música está encendido y funcionando!');
+    res.send('🤖 ¡El Bot de Música está encendido y funcionando con transmisión Opus!');
 });
 
 app.listen(PORT, () => {
@@ -42,7 +40,7 @@ const client = new Client({
 
 const player = createAudioPlayer();
 
-player.on(AudioPlayerStatus.Playing, () => console.log('[REPRODUCTOR] ¡Sonido enviado con éxito!'));
+player.on(AudioPlayerStatus.Playing, () => console.log('[REPRODUCTOR] ¡Transmitiendo sonido con éxito en formato Opus!'));
 player.on('error', error => console.error('[REPRODUCTOR ERROR]', error.message));
 
 client.once('ready', () => {
@@ -65,7 +63,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('⏳ Conectando y activando transmisión estable...');
+            message.reply('⏳ Conectando al canal y decodificando audio en tiempo real...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
@@ -75,11 +73,7 @@ client.on('messageCreate', async (message) => {
 
             connection.subscribe(player);
 
-            connection.on(VoiceConnectionStatus.Ready, () => {
-                console.log('[CONEXIÓN] Canal de voz listo para recibir audio.');
-            });
-
-            // Configurar transmisión FFmpeg con autoreconexión de red activa
+            // Generamos la transmisión convirtiéndola directamente al códec nativo de Discord (OggOpus)
             const ffmpegStream = new prism.FFmpeg({
                 binary: ffmpegPath,
                 args: [
@@ -90,19 +84,21 @@ client.on('messageCreate', async (message) => {
                     '-i', url,
                     '-analyze2pass', '0',
                     '-loglevel', '0',
-                    '-f', 's16le',
+                    '-acodec', 'libopus',         // Forzamos el cifrado de audio nativo de Discord
+                    '-f', 'opus',                 // Cambiamos el formato de salida a un contenedor Opus estable
                     '-ar', '48000',
                     '-ac', '2',
                 ],
             });
 
+            // Configuramos la entrada como OggOpus para saltarnos el bug de silencios del procesador
             const resource = createAudioResource(ffmpegStream, {
-                inputType: StreamType.Raw
+                inputType: StreamType.OggOpus
             });
 
             player.play(resource);
 
-            message.channel.send(`🎵 Transmitiendo audio de Archive.org en **${voiceChannel.name}**`);
+            message.channel.send(`🎵 Reproduciendo música anticortes en **${voiceChannel.name}**`);
 
         } catch (error) {
             console.error("Error al reproducir el audio:", error);
