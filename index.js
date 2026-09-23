@@ -5,7 +5,8 @@ import {
     createAudioResource, 
     StreamType
 } from '@discordjs/voice';
-import express from 'express'; // Importamos Express para Render
+import express from 'express'; 
+import axios from 'axios'; // Importamos Axios para evitar los bloqueos de Archive.org
 
 // ==========================================
 // 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
@@ -13,7 +14,6 @@ import express from 'express'; // Importamos Express para Render
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render visitará esta ruta para verificar que el bot sigue despierto
 app.get('/', (req, res) => {
     res.send('🤖 ¡El Bot de Música está encendido y funcionando 24/7!');
 });
@@ -43,7 +43,6 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return; 
 
-    // El comando se usará así en Discord: !play https://archive.org
     if (message.content.startsWith('!play')) {
         const url = message.content.replace('!play', '').trim();
 
@@ -57,7 +56,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('⏳ Conectando al canal de voz y cargando el audio desde la nube...');
+            message.reply('⏳ Conectando al canal de voz y solicitando transmisión estable desde Archive.org...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
@@ -65,8 +64,20 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Cargamos el recurso de audio directamente desde la URL de Archive.org
-            const resource = createAudioResource(url, {
+            // Solicitamos el archivo simulando ser un navegador web real y manteniendo la conexión viva
+            const response = await axios({
+                method: 'get',
+                url: url,
+                responseType: 'stream',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': '*/*',
+                    'Connection': 'keep-alive'
+                }
+            });
+
+            // Pasamos el flujo de datos directo de Axios en lugar de la URL de texto
+            const resource = createAudioResource(response.data, {
                 inputType: StreamType.Arbitrary
             });
 
@@ -77,7 +88,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error("Error al reproducir el audio:", error);
-            message.channel.send('❌ Hubo un error al intentar procesar el archivo de música.');
+            message.channel.send('❌ Hubo un error al intentar conectarse a Archive.org. Verifica que el enlace sea correcto.');
         }
     }
 
@@ -93,5 +104,4 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Coloca aquí tu token real del portal de desarrolladores de Discord
 client.login(process.env.DISCORD_TOKEN);
