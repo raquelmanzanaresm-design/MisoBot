@@ -62,7 +62,7 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // 🔥 PARCHE DE RED: Corrige el bug que deja al bot congelado en Render
+            // Parche de red para entornos en la nube
             connection.on('stateChange', (oldState, newState) => {
                 const oldNetworking = Reflect.get(oldState, 'networking');
                 const newNetworking = Reflect.get(newState, 'networking');
@@ -78,9 +78,9 @@ client.on('messageCreate', async (message) => {
                 if (newNetworking) newNetworking.on('stateChange', networkStateChangeHandler);
             });
 
-            // Configuración directa y segura de reproducción
             console.log('[BOT] Iniciando transmisión desde Archive.org...');
 
+            // Transmisión directa optimizada para evitar fallos de códec
             const ffmpegStream = new prism.FFmpeg({
                 args: [
                     '-reconnect', '1',
@@ -89,17 +89,15 @@ client.on('messageCreate', async (message) => {
                     '-i', url,
                     '-analyze_duration', '0',
                     '-loglevel', '0',
-                    '-acodec', 'libopus',
-                    '-f', 'opus',
+                    '-f', 's16le',
                     '-ar', '48000',
                     '-ac', '2',
                 ],
             });
 
-            const opusStream = ffmpegStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 }));
-
-            const resource = createAudioResource(opusStream, {
-                inputType: StreamType.Opus
+            const resource = createAudioResource(ffmpegStream, {
+                inputType: StreamType.Raw,
+                inlineVolume: true
             });
 
             player.play(resource);
