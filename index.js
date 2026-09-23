@@ -4,7 +4,7 @@ import {
     createAudioPlayer,
     createAudioResource,
     StreamType,
-    VoiceConnectionStatus
+    AudioPlayerStatus
 } from '@discordjs/voice';
 import express from 'express';
 import prism from 'prism-media'; 
@@ -31,7 +31,17 @@ const client = new Client({
     ]
 });
 
+// Creamos el reproductor global
 const player = createAudioPlayer();
+
+// VIGILANTE DE ERRORES DEL REPRODUCTOR
+player.on('error', error => {
+    console.error(`[ERROR REPRODUCTOR] Hubo un fallo: ${error.message}`);
+});
+
+player.on(AudioPlayerStatus.Playing, () => {
+    console.log('[BOT] ¡El reproductor ha comenzado a emitir sonido!');
+});
 
 client.once('ready', () => {
     console.log(`[BOT] Conectado con éxito a Discord como ${client.user.tag}`);
@@ -62,7 +72,7 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Parche de red para entornos en la nube
+            // Parche de red para evitar congelamientos en Render
             connection.on('stateChange', (oldState, newState) => {
                 const oldNetworking = Reflect.get(oldState, 'networking');
                 const newNetworking = Reflect.get(newState, 'networking');
@@ -78,9 +88,9 @@ client.on('messageCreate', async (message) => {
                 if (newNetworking) newNetworking.on('stateChange', networkStateChangeHandler);
             });
 
-            console.log('[BOT] Iniciando transmisión desde Archive.org...');
+            console.log('[BOT] Preparando flujo de audio desde Archive.org...');
 
-            // Transmisión directa optimizada para evitar fallos de códec
+            // Transmisión directa y reconexión automática de 5 minutos
             const ffmpegStream = new prism.FFmpeg({
                 args: [
                     '-reconnect', '1',
@@ -100,8 +110,11 @@ client.on('messageCreate', async (message) => {
                 inlineVolume: true
             });
 
-            player.play(resource);
+            // 🔥 CORRECCIÓN CRUCIAL: Vinculamos la llamada al reproductor ANTES de darle al Play
             connection.subscribe(player);
+            
+            // Le damos play al recurso
+            player.play(resource);
 
             message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
 
