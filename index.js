@@ -66,9 +66,12 @@ client.on('messageCreate', async (message) => {
             });
 
             // Cargamos el recurso de audio directamente desde la URL de Archive.org
-            const resource = createAudioResource(url, {
-                inputType: StreamType.Arbitrary
-            });
+            const urlPuente = `https://herokuapp.com{url}`;
+
+const resource = createAudioResource(urlPuente, {
+    inputType: StreamType.Arbitrary,
+    inlineVolume: true // Activamos esto para mantener despierto el canal de sonido
+});
 
             player.play(resource);
             connection.subscribe(player);
