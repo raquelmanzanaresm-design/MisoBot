@@ -62,37 +62,50 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Esperamos a que la conexión esté lista al 100%
-            connection.on(VoiceConnectionStatus.Ready, () => {
-                console.log('[BOT] Conexión de voz lista. Iniciando FFmpeg...');
-
-                // Configuración de audio corregida para Discord y Archive.org
-                const ffmpegStream = new prism.FFmpeg({
-                    args: [
-                        '-reconnect', '1',
-                        '-reconnect_streamed', '1',
-                        '-reconnect_delay_max', '5',
-                        '-i', url,
-                        '-analyze_duration', '0',
-                        '-loglevel', '0',
-                        '-acodec', 'libopus',
-                        '-f', 'opus',
-                        '-ar', '48000',
-                        '-ac', '2',
-                    ],
-                });
-
-                const opusStream = ffmpegStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 }));
-
-                const resource = createAudioResource(opusStream, {
-                    inputType: StreamType.Opus
-                });
-
-                player.play(resource);
-                connection.subscribe(player);
-
-                message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
+            // 🔥 PARCHE DE RED: Corrige el bug que deja al bot congelado en Render
+            connection.on('stateChange', (oldState, newState) => {
+                const oldNetworking = Reflect.get(oldState, 'networking');
+                const newNetworking = Reflect.get(newState, 'networking');
+                
+                const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+                    const newReason = Reflect.get(newNetworkState, 'reason');
+                    if (newReason === 'close' && Reflect.get(newNetworkState, 'code') === 4014) {
+                        connection.configureNetworking();
+                    }
+                };
+                
+                if (oldNetworking) oldNetworking.off('stateChange', networkStateChangeHandler);
+                if (newNetworking) newNetworking.on('stateChange', networkStateChangeHandler);
             });
+
+            // Configuración directa y segura de reproducción
+            console.log('[BOT] Iniciando transmisión desde Archive.org...');
+
+            const ffmpegStream = new prism.FFmpeg({
+                args: [
+                    '-reconnect', '1',
+                    '-reconnect_streamed', '1',
+                    '-reconnect_delay_max', '5',
+                    '-i', url,
+                    '-analyze_duration', '0',
+                    '-loglevel', '0',
+                    '-acodec', 'libopus',
+                    '-f', 'opus',
+                    '-ar', '48000',
+                    '-ac', '2',
+                ],
+            });
+
+            const opusStream = ffmpegStream.pipe(new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 }));
+
+            const resource = createAudioResource(opusStream, {
+                inputType: StreamType.Opus
+            });
+
+            player.play(resource);
+            connection.subscribe(player);
+
+            message.channel.send(`🎵 Reproduciendo audio de Archive.org en **${voiceChannel.name}**`);
 
         } catch (error) {
             console.error("Error al reproducir el audio:", error);
@@ -113,5 +126,4 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Lee de forma segura tu variable oculta en Render
 client.login(process.env.DISCORD_TOKEN);
