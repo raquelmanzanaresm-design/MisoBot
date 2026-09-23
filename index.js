@@ -7,7 +7,9 @@ import {
     createAudioPlayer, 
     createAudioResource, 
     StreamType,
-    AudioPlayerStatus
+    AudioPlayerStatus,
+    entersState,
+    VoiceConnectionStatus
 } from '@discordjs/voice';
 import express from 'express'; 
 import prism from 'prism-media'; 
@@ -19,7 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 ¡El Bot de Música está encendido y funcionando con transmisión Opus!');
+    res.send('🤖 ¡El Bot de Música está encendido y funcionando!');
 });
 
 app.listen(PORT, () => {
@@ -63,14 +65,31 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('⏳ Conectando al canal y decodificando audio en tiempo real...');
+            message.reply('⏳ Forzando conexión de red segura y cargando audio...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
+                selfDeaf: false, // Asegura que el bot no entre ensordecido de fábrica
             });
 
+            // PARCHE DE RED CRÍTICO: Obligar a Discord y Render a abrir los puertos UDP de sonido
+            connection.on('stateChange', (oldState, newState) => {
+                const oldNetworking = Reflect.get(oldState, 'networking');
+                const newNetworking = Reflect.get(newState, 'networking');
+
+                const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+                    const newUDP = Reflect.get(newNetworkState, 'udp');
+                    clearInterval(newUDP?.keepAliveInterval);
+                };
+
+                oldNetworking?.off('stateChange', networkStateChangeHandler);
+                newNetworking?.on('stateChange', networkStateChangeHandler);
+            });
+
+            // Esperamos un segundo a que la conexión esté 100% establecida antes de inyectar música
+            await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             connection.subscribe(player);
 
             // Generamos la transmisión convirtiéndola directamente al códec nativo de Discord (OggOpus)
@@ -84,25 +103,23 @@ client.on('messageCreate', async (message) => {
                     '-i', url,
                     '-analyze2pass', '0',
                     '-loglevel', '0',
-                    '-acodec', 'libopus',         // Forzamos el cifrado de audio nativo de Discord
-                    '-f', 'opus',                 // Cambiamos el formato de salida a un contenedor Opus estable
+                    '-acodec', 'libopus',         
+                    '-f', 'opus',                 
                     '-ar', '48000',
                     '-ac', '2',
                 ],
             });
 
-            // Configuramos la entrada como OggOpus para saltarnos el bug de silencios del procesador
             const resource = createAudioResource(ffmpegStream, {
                 inputType: StreamType.OggOpus
             });
 
             player.play(resource);
-
-            message.channel.send(`🎵 Reproduciendo música anticortes en **${voiceChannel.name}**`);
+            message.channel.send(`🎵 ¡Reproduciendo música anticortes con éxito en **${voiceChannel.name}**!`);
 
         } catch (error) {
             console.error("Error al reproducir el audio:", error);
-            message.channel.send('❌ Hubo un error al intentar procesar el archivo.');
+            message.channel.send('❌ Hubo un error al intentar forzar el enlace de red con Discord.');
         }
     }
 
