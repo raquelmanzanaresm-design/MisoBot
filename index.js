@@ -180,12 +180,11 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    // Retorna directamente el Stream nativo de AWS (compatible con Node pipe)
     return respuesta.Body;
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO CON FFMPEG
+// 8. CONVERTIR AUDIO CON FFMPEG EN TIEMPO REAL (-re)
 // ============================================================
 
 function crearStreamAudio(streamR2, nombreArchivo) {
@@ -193,6 +192,7 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     console.log(`🎛️ Iniciando FFmpeg para: ${nombreArchivo}`);
 
     const ffmpeg = spawn(ffmpegPath, [
+        "-re",
         "-i", "pipe:0",
         "-f", "s16le",
         "-ar", "48000",
@@ -215,7 +215,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
     });
 
-    // Enviar el stream directo de R2 a la entrada de FFmpeg
     streamR2.pipe(ffmpeg.stdin);
 
     return {
@@ -283,10 +282,6 @@ client.on(Events.MessageCreate, async (message) => {
                 selfMute: false
             });
 
-            estado.connection.on(VoiceConnectionStatus.Ready, () => {
-                console.log("✅ Conexión de voz: READY");
-            });
-
             estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
                 console.log("⚠️ Conexión de voz: DISCONNECTED");
             });
@@ -296,7 +291,15 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        // Suscribir inmediatamente la conexión al reproductor
+        try {
+            await entersState(estado.connection, VoiceConnectionStatus.Ready, 15000);
+            console.log("✅ Conexión de voz totalmente establecida (READY)");
+        } catch (errorVoz) {
+            console.error("❌ Tiempo de espera agotado para conectar a voz:", errorVoz);
+            await message.channel.send("❌ No se pudo establecer la conexión de voz en Discord.");
+            return;
+        }
+
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpeg) {
