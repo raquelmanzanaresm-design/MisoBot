@@ -3,6 +3,7 @@
 // ============================================================
 
 import "dotenv/config";
+import { Readable } from "stream";
 
 import {
     Client,
@@ -106,9 +107,6 @@ const client = new Client({
 // 5. ESTADO DEL BOT
 // ============================================================
 
-// Guardamos una conexión y un reproductor por servidor.
-// Esto evita crear conexiones nuevas cada vez que usamos !play.
-
 const servidores = new Map();
 
 // ============================================================
@@ -127,10 +125,6 @@ function obtenerEstadoServidor(guildId) {
             ffmpeg: null,
             archivoActual: null
         };
-
-        // ----------------------------------------------------
-        // EVENTOS DEL REPRODUCTOR
-        // ----------------------------------------------------
 
         player.on(AudioPlayerStatus.Idle, () => {
             console.log(`[${guildId}] 🎵 Reproductor: IDLE`);
@@ -194,6 +188,11 @@ async function obtenerArchivoR2(nombreArchivo) {
         `📦 Tamaño del archivo: ${respuesta.ContentLength || "desconocido"} bytes`
     );
 
+    // Convertir el stream de R2 a un Readable Stream nativo de Node.js
+    if (typeof respuesta.Body.transformToWebStream === "function") {
+        return Readable.fromWebStream(respuesta.Body.transformToWebStream());
+    }
+
     return respuesta.Body;
 }
 
@@ -226,10 +225,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         ]
     });
 
-    // --------------------------------------------------------
-    // ERRORES / INFORMACIÓN DE FFMPEG
-    // --------------------------------------------------------
-
     ffmpeg.stderr.on("data", (data) => {
         const texto = data.toString().trim();
 
@@ -247,10 +242,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
             `🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`
         );
     });
-
-    // --------------------------------------------------------
-    // ENVIAMOS EL ARCHIVO DE R2 A FFMPEG
-    // --------------------------------------------------------
 
     streamR2.on("error", (error) => {
         console.error("❌ Error leyendo el archivo desde R2:", error);
@@ -288,15 +279,9 @@ client.on("messageCreate", async (message) => {
 
     try {
 
-        // Ignorar mensajes de otros bots
         if (message.author.bot) return;
 
-        // Solo nos interesa !play
         if (!message.content.startsWith("!play")) return;
-
-        // ----------------------------------------------------
-        // OBTENER NOMBRE DEL ARCHIVO
-        // ----------------------------------------------------
 
         const partes = message.content.trim().split(/\s+/);
 
@@ -311,10 +296,6 @@ client.on("messageCreate", async (message) => {
 
             return;
         }
-
-        // ----------------------------------------------------
-        // COMPROBAR CANAL DE VOZ
-        // ----------------------------------------------------
 
         const canalVoz = message.member?.voice?.channel;
 
@@ -338,15 +319,7 @@ client.on("messageCreate", async (message) => {
             `⏳ Preparando **${nombreCancion}**...`
         );
 
-        // ----------------------------------------------------
-        // OBTENER ESTADO DEL SERVIDOR
-        // ----------------------------------------------------
-
         const estado = obtenerEstadoServidor(message.guild.id);
-
-        // ----------------------------------------------------
-        // CONECTAR A VOZ
-        // ----------------------------------------------------
 
         if (
             !estado.connection ||
@@ -393,10 +366,6 @@ client.on("messageCreate", async (message) => {
             });
         }
 
-        // ----------------------------------------------------
-        // ESPERAR A QUE DISCORD ESTÉ REALMENTE CONECTADO
-        // ----------------------------------------------------
-
         console.log("⏳ Esperando conexión de voz...");
 
         try {
@@ -411,31 +380,13 @@ client.on("messageCreate", async (message) => {
 
         } catch (error) {
 
-          console.error("❌ Discord no consiguió establecer la conexión de voz:");
-    console.error(error);
+            console.error("❌ Discord no consiguió establecer la conexión de voz:");
+            console.error(error);
 
-    console.log("🔎 Estado de la conexión:", estado.connection.state.status);
-
-    if (estado.connection.state.status === VoiceConnectionStatus.Signalling) {
-        console.log("📡 Discord sigue en estado SIGNALLING.");
-    }
-
-    if (estado.connection.state.status === VoiceConnectionStatus.Connecting) {
-        console.log("🔄 Discord sigue en estado CONNECTING.");
-    }
-
-    if (estado.connection.state.status === VoiceConnectionStatus.Disconnected) {
-        console.log("🔴 Discord está en estado DISCONNECTED.");
-    }
-
-    return message.reply(
-        "❌ No he podido establecer correctamente la conexión de voz."
-    );
-}
-
-        // ----------------------------------------------------
-        // PARAR FFMPEG ANTERIOR SI EXISTE
-        // ----------------------------------------------------
+            return message.reply(
+                "❌ No he podido establecer correctamente la conexión de voz."
+            );
+        }
 
         if (estado.ffmpeg) {
 
@@ -448,15 +399,7 @@ client.on("messageCreate", async (message) => {
             estado.ffmpeg = null;
         }
 
-        // ----------------------------------------------------
-        // OBTENER ARCHIVO DESDE R2
-        // ----------------------------------------------------
-
         const streamR2 = await obtenerArchivoR2(nombreCancion);
-
-        // ----------------------------------------------------
-        // PASAR R2 A FFMPEG
-        // ----------------------------------------------------
 
         const audio = crearStreamAudio(
             streamR2,
@@ -465,10 +408,6 @@ client.on("messageCreate", async (message) => {
 
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
-
-        // ----------------------------------------------------
-        // CREAR RECURSO DE DISCORD
-        // ----------------------------------------------------
 
         console.log("🎧 Creando recurso de audio...");
 
@@ -483,17 +422,9 @@ client.on("messageCreate", async (message) => {
             }
         );
 
-        // ----------------------------------------------------
-        // SUSCRIBIR REPRODUCTOR A DISCORD
-        // ----------------------------------------------------
-
         estado.connection.subscribe(estado.player);
 
         console.log("🔗 Reproductor conectado a Discord.");
-
-        // ----------------------------------------------------
-        // REPRODUCIR
-        // ----------------------------------------------------
 
         estado.player.play(recursoAudio);
 
