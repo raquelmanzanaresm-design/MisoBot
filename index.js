@@ -90,15 +90,12 @@ client.on('messageCreate', async (message) => {
 
         const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
 
-        const recursoAudio = createAudioResource(streamDeAudio, {
-            inputType: StreamType.Arbitrary, // Usamos Arbitrary para que procese el MP3 por streaming de forma fluida
-            inlineVolume: true
+          const recursoAudio = createAudioResource(streamDeAudio, {
+            inputType: StreamType.Arbitrary,
         });
-        
-        recursoAudio.volume.setVolume(1.0); 
 
         reproductor.play(recursoAudio);
-        conexionVoz.subscribe(reproductor); 
+        conexionVoz.subscribe(reproductor);
 
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
