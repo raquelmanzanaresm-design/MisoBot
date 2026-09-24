@@ -12,13 +12,13 @@ import {
 
 import {
     joinVoiceChannel,
-    entersState,
     VoiceConnectionStatus,
     createAudioPlayer,
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    StreamType
+    StreamType,
+    generateDependencyReport
 } from "@discordjs/voice";
 
 import {
@@ -29,6 +29,9 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "child_process";
 import http from "http";
+
+// Imprimir reporte de dependencias de voz para verificar encriptación
+console.log("📊 Reporte de dependencias de Voice:\n", generateDependencyReport());
 
 // ============================================================
 // 1. SERVIDOR HTTP PARA RENDER
@@ -184,7 +187,7 @@ async function obtenerArchivoR2(nombreArchivo) {
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO CON FFMPEG EN TIEMPO REAL (-re)
+// 8. CONVERTIR AUDIO CON FFMPEG
 // ============================================================
 
 function crearStreamAudio(streamR2, nombreArchivo) {
@@ -192,7 +195,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     console.log(`🎛️ Iniciando FFmpeg para: ${nombreArchivo}`);
 
     const ffmpeg = spawn(ffmpegPath, [
-        "-re",
         "-i", "pipe:0",
         "-f", "s16le",
         "-ar", "48000",
@@ -282,6 +284,10 @@ client.on(Events.MessageCreate, async (message) => {
                 selfMute: false
             });
 
+            estado.connection.on(VoiceConnectionStatus.Ready, () => {
+                console.log("✅ Conexión de voz: READY");
+            });
+
             estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
                 console.log("⚠️ Conexión de voz: DISCONNECTED");
             });
@@ -289,15 +295,6 @@ client.on(Events.MessageCreate, async (message) => {
             estado.connection.on("error", (err) => {
                 console.error("❌ ERROR EN LA CONEXIÓN DE VOZ:", err);
             });
-        }
-
-        try {
-            await entersState(estado.connection, VoiceConnectionStatus.Ready, 15000);
-            console.log("✅ Conexión de voz totalmente establecida (READY)");
-        } catch (errorVoz) {
-            console.error("❌ Tiempo de espera agotado para conectar a voz:", errorVoz);
-            await message.channel.send("❌ No se pudo establecer la conexión de voz en Discord.");
-            return;
         }
 
         estado.connection.subscribe(estado.player);
