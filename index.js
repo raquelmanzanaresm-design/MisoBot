@@ -17,6 +17,7 @@ import {
     createAudioPlayer,
     createAudioResource,
     AudioPlayerStatus,
+    NoSubscriberBehavior,
     StreamType
 } from "@discordjs/voice";
 
@@ -115,7 +116,12 @@ function obtenerEstadoServidor(guildId) {
 
     if (!servidores.has(guildId)) {
 
-        const player = createAudioPlayer();
+        // Configuramos el reproductor para NUNCA auto-pausarse
+        const player = createAudioPlayer({
+            behaviors: {
+                noSubscriber: NoSubscriberBehavior.Play
+            }
+        });
 
         const estado = {
             connection: null,
@@ -175,20 +181,9 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    console.log(`📦 Content-Type de R2: ${respuesta.ContentType || "desconocido"}`);
-    console.log(`📦 Tamaño del archivo: ${respuesta.ContentLength || "desconocido"} bytes`);
-
-    // Convertimos la respuesta de R2 a Stream de Node de manera compatible
-    if (typeof respuesta.Body.pipe === "function") {
-        return respuesta.Body;
-    }
-
-    if (typeof respuesta.Body.transformToByteArray === "function") {
-        const buffer = await respuesta.Body.transformToByteArray();
-        return Readable.from(Buffer.from(buffer));
-    }
-
-    return respuesta.Body;
+    // Convertimos la respuesta a un Stream de Node a partir del ArrayBuffer
+    const arrayBuffer = await respuesta.Body.transformToByteArray();
+    return Readable.from(Buffer.from(arrayBuffer));
 }
 
 // ============================================================
@@ -283,14 +278,9 @@ client.on("messageCreate", async (message) => {
         const estado = obtenerEstadoServidor(message.guild.id);
 
         if (
-            estado.connection && 
-            estado.connection.state.status !== VoiceConnectionStatus.Ready
+            !estado.connection || 
+            estado.connection.state.status === VoiceConnectionStatus.Destroyed
         ) {
-            try { estado.connection.destroy(); } catch {}
-            estado.connection = null;
-        }
-
-        if (!estado.connection) {
             console.log("🔊 Creando conexión de voz...");
 
             estado.connection = joinVoiceChannel({
@@ -314,11 +304,9 @@ client.on("messageCreate", async (message) => {
             });
         }
 
-        try {
-            await entersState(estado.connection, VoiceConnectionStatus.Ready, 7000);
-        } catch {
-            console.log("⚠️ Conexión demorada, continuando envío directo...");
-        }
+        // Suscribimos la conexión AL REPRODUCTOR antes de enviar audio
+        estado.connection.subscribe(estado.player);
+        console.log("🔗 Reproductor suscrito a la conexión de Discord.");
 
         if (estado.ffmpeg) {
             console.log("🛑 Deteniendo FFmpeg anterior...");
@@ -338,9 +326,6 @@ client.on("messageCreate", async (message) => {
             inputType: StreamType.Raw,
             metadata: { nombre: nombreCancion }
         });
-
-        estado.connection.subscribe(estado.player);
-        console.log("🔗 Reproductor conectado a Discord.");
 
         estado.player.play(recursoAudio);
         console.log("▶️ Comando PLAY enviado al reproductor.");
