@@ -145,10 +145,7 @@ function obtenerEstadoServidor(guildId) {
         });
 
         player.on("error", (error) => {
-            console.error(
-                `[${guildId}] ❌ ERROR DEL REPRODUCTOR:`,
-                error
-            );
+            console.error(`[${guildId}] ❌ ERROR DEL REPRODUCTOR:`, error);
         });
 
         servidores.set(guildId, estado);
@@ -279,67 +276,44 @@ client.on("messageCreate", async (message) => {
 
         const estado = obtenerEstadoServidor(message.guild.id);
 
+        // Si existe conexión previa en mal estado, la destruimos
         if (
-            !estado.connection ||
-            estado.connection.state.status === VoiceConnectionStatus.Destroyed
+            estado.connection && 
+            estado.connection.state.status !== VoiceConnectionStatus.Ready
         ) {
+            try { estado.connection.destroy(); } catch {}
+            estado.connection = null;
+        }
+
+        if (!estado.connection) {
             console.log("🔊 Creando conexión de voz...");
 
             estado.connection = joinVoiceChannel({
                 channelId: canalVoz.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: false,
+                selfDeaf: true,
                 selfMute: false
-            });
-
-            // Evitar atascamiento en estado Connecting/Signalling
-            estado.connection.on(VoiceConnectionStatus.Connecting, () => {
-                console.log("📡 Conectando a la red de voz...");
-            });
-
-            estado.connection.on(VoiceConnectionStatus.Signalling, () => {
-                console.log("🔄 Negociando señal con Discord...");
             });
 
             estado.connection.on(VoiceConnectionStatus.Ready, () => {
                 console.log("✅ Conexión de voz: READY");
             });
 
-            estado.connection.on(VoiceConnectionStatus.Disconnected, async () => {
-                console.log("⚠️ Conexión de voz: DISCONNECTED. Reintentando...");
-                try {
-                    await Promise.race([
-                        entersState(estado.connection, VoiceConnectionStatus.Signalling, 5000),
-                        entersState(estado.connection, VoiceConnectionStatus.Connecting, 5000)
-                    ]);
-                } catch {
-                    estado.connection.destroy();
-                }
+            estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
+                console.log("⚠️ Conexión de voz: DISCONNECTED");
             });
 
-            estado.connection.on(VoiceConnectionStatus.Destroyed, () => {
-                console.log("🛑 Conexión de voz: DESTROYED");
-            });
-
-            estado.connection.on("error", (error) => {
-                console.error("❌ ERROR EN LA CONEXIÓN DE VOZ:", error);
+            estado.connection.on("error", (err) => {
+                console.error("❌ ERROR EN LA CONEXIÓN DE VOZ:", err);
             });
         }
 
-        console.log("⏳ Esperando conexión de voz...");
-
+        // Intento de espera sin abortar el flujo entero en Render
         try {
-            await entersState(estado.connection, VoiceConnectionStatus.Ready, 20000);
-            console.log("✅ Discord está listo para recibir audio.");
-        } catch (error) {
-            console.error("❌ Discord no consiguió establecer la conexión de voz:", error);
-            
-            // Si la conexión falla, se destruye para permitir intentar de nuevo limpiamente la próxima vez
-            try { estado.connection.destroy(); } catch {}
-            estado.connection = null;
-
-            return message.reply("❌ No he podido conectar al canal de voz. Inténtalo de nuevo.");
+            await entersState(estado.connection, VoiceConnectionStatus.Ready, 7000);
+        } catch {
+            console.log("⚠️ La conexión tardó más de 7s, pero intentaremos enviar el audio directamente...");
         }
 
         if (estado.ffmpeg) {
@@ -375,7 +349,7 @@ client.on("messageCreate", async (message) => {
         console.error("==========================================");
 
         try {
-            await message.channel.send("❌ Error procesando el archivo desde R2. Revisa el nombre del archivo.");
+            await message.channel.send("❌ Error al procesar el audio de R2.");
         } catch {}
     }
 });
