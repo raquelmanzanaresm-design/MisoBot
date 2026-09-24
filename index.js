@@ -17,8 +17,7 @@ import {
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    StreamType,
-    generateDependencyReport
+    StreamType
 } from "@discordjs/voice";
 
 import {
@@ -29,8 +28,6 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import prism from "prism-media";
 import http from "http";
-
-console.log("📊 Reporte de dependencias de Voice:\n", generateDependencyReport());
 
 // ============================================================
 // 1. SERVIDOR HTTP PARA RENDER
@@ -267,10 +264,12 @@ client.on(Events.MessageCreate, async (message) => {
 
         const r2Stream = await obtenerArchivoR2Stream(nombreCancion);
 
+        // FFmpeg codifica directamente a Opus (Ogg container)
         const ffmpegStream = new prism.FFmpeg({
             args: [
                 "-i", "pipe:0",
-                "-f", "s16le",
+                "-acodec", "libopus",
+                "-f", "opus",
                 "-ar", "48000",
                 "-ac", "2"
             ]
@@ -285,14 +284,12 @@ client.on(Events.MessageCreate, async (message) => {
 
         const audioPipe = r2Stream.pipe(ffmpegStream);
 
-        console.log("🎧 Creando recurso de audio con Pacing de volumen...");
+        console.log("🎧 Creando recurso de audio en formato OggOpus...");
 
+        // Discord reproduce OggOpus de forma nativa sin gasto extra de CPU/RAM
         const recursoAudio = createAudioResource(audioPipe, {
-            inputType: StreamType.Raw,
-            inlineVolume: true
+            inputType: StreamType.OggOpus
         });
-
-        recursoAudio.volume.setVolume(1.0);
 
         estado.player.play(recursoAudio);
         console.log("▶️ Comando PLAY enviado al reproductor.");
