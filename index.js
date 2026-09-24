@@ -28,6 +28,7 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "child_process";
 import http from "http";
+import { Readable } from "stream";
 
 // ============================================================
 // 1. SERVIDOR HTTP PARA RENDER
@@ -159,10 +160,10 @@ function obtenerEstadoServidor(guildId) {
 }
 
 // ============================================================
-// 7. OBTENER ARCHIVO DESDE R2
+// 7. OBTENER ARCHIVO DESDE R2 COMO BUFFER
 // ============================================================
 
-async function obtenerArchivoR2(nombreArchivo) {
+async function obtenerArchivoR2Buffer(nombreArchivo) {
 
     console.log(`☁️ Solicitando a R2: ${nombreArchivo}`);
 
@@ -179,49 +180,41 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    return respuesta.Body;
+    // Convertir el stream de R2 a un Buffer completo en memoria
+    const bytes = await respuesta.Body.transformToByteArray();
+    return Buffer.from(bytes);
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO CON FFMPEG (S16LE / RAW PCM)
+// 8. CONVERTIR AUDIO BUFFER CON FFMPEG (S16LE / RAW PCM)
 // ============================================================
 
-function crearStreamAudio(streamR2, nombreArchivo) {
-
-    console.log(`🎛️ Iniciando FFmpeg para: ${nombreArchivo}`);
+function crearStreamAudioDesdeBuffer(bufferAudio) {
 
     const ffmpeg = spawn(ffmpegPath, [
         "-i", "pipe:0",
         "-f", "s16le",
         "-ar", "48000",
         "-ac", "2",
+        "-loglevel", "quiet",
         "pipe:1"
     ], {
         stdio: ["pipe", "pipe", "ignore"]
     });
 
-    // Control de errores en la entrada stdin (EPIPE)
+    // Crear un stream legible desde el Buffer cargado
+    const streamEntrada = Readable.from(bufferAudio);
+
+    streamEntrada.on("error", (err) => console.error("❌ Error en Stream de Buffer:", err));
     ffmpeg.stdin.on("error", (err) => {
-        if (err.code !== "EPIPE") {
-            console.error("❌ Error en FFmpeg STDIN:", err);
-        }
+        if (err.code !== "EPIPE") console.error("❌ Error en FFmpeg STDIN:", err);
     });
 
-    // Control de errores en el stream de R2
-    streamR2.on("error", (err) => {
-        console.error("❌ Error en el Stream de R2:", err);
+    ffmpeg.on("close", (code) => {
+        console.log(`🎛️ FFmpeg finalizó proceso. Código: ${code}`);
     });
 
-    ffmpeg.on("error", (error) => {
-        console.error("❌ No se pudo iniciar FFmpeg:", error);
-    });
-
-    ffmpeg.on("close", (code, signal) => {
-        console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
-    });
-
-    // Canalizar R2 a FFmpeg de forma segura
-    streamR2.pipe(ffmpeg.stdin);
+    streamEntrada.pipe(ffmpeg.stdin);
 
     return {
         stream: ffmpeg.stdout,
@@ -270,7 +263,7 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`🏠 Servidor: ${message.guild.name} | 🔊 Canal: ${canalVoz.name}`);
         console.log("==========================================");
 
-        await message.reply(`⏳ Preparando **${nombreCancion}**...`);
+        await message.reply(`⏳ Descargando y preparando **${nombreCancion}**...`);
 
         const estado = obtenerEstadoServidor(message.guild.id);
 
@@ -309,13 +302,14 @@ client.on(Events.MessageCreate, async (message) => {
             estado.ffmpeg = null;
         }
 
-        const streamR2 = await obtenerArchivoR2(nombreCancion);
-        const audio = crearStreamAudio(streamR2, nombreCancion);
+        // Descarga el audio completo a memoria antes de pasarlo a FFmpeg
+        const bufferAudio = await obtenerArchivoR2Buffer(nombreCancion);
+        const audio = crearStreamAudioDesdeBuffer(bufferAudio);
 
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
 
-        console.log("🎧 Creando recurso de audio PCM Raw...");
+        console.log("🎧 Creando recurso de audio PCM Raw desde Buffer...");
 
         const recursoAudio = createAudioResource(audio.stream, {
             inputType: StreamType.Raw
