@@ -1,36 +1,36 @@
 import { Client, GatewayIntentBits } from 'discord.js';
-import { 
-    joinVoiceChannel, 
-    createAudioPlayer, 
-    createAudioResource, 
+import {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
     StreamType
 } from '@discordjs/voice';
-import express from 'express'; // Importamos Express para Render
+import express from 'express';
+import prism from 'prism-media'; // 💡 Asegúrate de tener esta librería instalada
 
-// ==========================================
-// 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
-// ==========================================
+// // ----------------------------------------------------
+// // 1. MINI SERVIDOR WEB PARA MANTENERLO VIVO 24/7
+// // ----------------------------------------------------
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Render visitará esta ruta para verificar que el bot sigue despierto
 app.get('/', (req, res) => {
-    res.send('🤖 ¡El Bot de Música está encendido y funcionando 24/7!');
+    res.send('¡El Bot de Música está encendido y funcionando 24/7!');
 });
 
 app.listen(PORT, () => {
     console.log(`[WEB] Servidor web interno corriendo en el puerto ${PORT}`);
 });
 
-// ==========================================
-// 2. CONFIGURACIÓN DEL BOT DE DISCORD
-// ==========================================
+// // ----------------------------------------------------
+// // 2. CONFIGURACIÓN DEL BOT DE DISCORD
+// // ----------------------------------------------------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates 
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -41,9 +41,9 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-    if (message.author.bot) return; 
+    if (message.author.bot) return;
 
-    // El comando se usará así en Discord: !play https://archive.org
+    // Comando !play
     if (message.content.startsWith('!play')) {
         const url = message.content.replace('!play', '').trim();
 
@@ -57,7 +57,7 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            message.reply('⏳ Conectando al canal de voz y cargando el audio desde la nube...');
+            message.reply('🎵 Conectando al canal de voz y cargando el audio desde la nube...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
@@ -65,9 +65,27 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // Cargamos el recurso de audio directamente desde la URL de Archive.org
-            const resource = createAudioResource(url, {
-                inputType: StreamType.Arbitrary
+            // 🔥 AQUÍ ESTÁ EL TRUCO: Creamos un proceso FFmpeg que se reconecta solo si Archive.org corta la conexión
+            const ffmpegStream = new prism.FFmpeg({
+                args: [
+                    '-reconnect', '1',
+                    '-reconnect_streamed', '1',
+                    '-reconnect_delay_max', '5',
+                    '-i', url,
+                    '-analyze_duration', '0',
+                    '-loglevel', '0',
+                    '-f', 's16le',
+                    '-ar', '48000',
+                    '-ac', '2',
+                ],
+            });
+
+            // Convertimos ese stream a formato Opus (el que usa Discord)
+            const opusStream = ffmpegStream.pipe(new prism.opus.Encoder({ rate: 48000, channels: 2, frameSize: 960 }));
+
+            // Cargamos el recurso usando nuestro stream protegido contra cortes
+            const resource = createAudioResource(opusStream, {
+                inputType: StreamType.Opus
             });
 
             player.play(resource);
@@ -81,6 +99,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
+    // Comando !stop
     if (message.content === '!stop') {
         player.stop();
         const connection = joinVoiceChannel({
@@ -93,5 +112,5 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Coloca aquí tu token real del portal de desarrolladores de Discord
+// Coloca aquí tu nuevo Token de Discord generado tras hacer el Reset
 client.login(process.env.DISCORD_TOKEN);
