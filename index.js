@@ -3,7 +3,6 @@
 // ============================================================
 
 import "dotenv/config";
-import { Readable } from "stream";
 
 import {
     Client,
@@ -181,8 +180,8 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    const arrayBuffer = await respuesta.Body.transformToByteArray();
-    return Readable.from(Buffer.from(arrayBuffer));
+    // Retorna directamente el Stream nativo de AWS (compatible con Node pipe)
+    return respuesta.Body;
 }
 
 // ============================================================
@@ -194,8 +193,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     console.log(`🎛️ Iniciando FFmpeg para: ${nombreArchivo}`);
 
     const ffmpeg = spawn(ffmpegPath, [
-        "-analyzeduration", "0",
-        "-loglevel", "0",
         "-i", "pipe:0",
         "-f", "s16le",
         "-ar", "48000",
@@ -218,6 +215,7 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
     });
 
+    // Enviar el stream directo de R2 a la entrada de FFmpeg
     streamR2.pipe(ffmpeg.stdin);
 
     return {
@@ -298,12 +296,7 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        try {
-            await entersState(estado.connection, VoiceConnectionStatus.Ready, 5000);
-        } catch (e) {
-            console.log("⚠️ Continuando sin esperar confirmación estricta de voz...");
-        }
-
+        // Suscribir inmediatamente la conexión al reproductor
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpeg) {
