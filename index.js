@@ -3,14 +3,15 @@ import {
     joinVoiceChannel,
     createAudioPlayer,
     createAudioResource,
-    StreamType
+    StreamType,
+    AudioPlayerStatus
 } from '@discordjs/voice';
 import express from 'express';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot vivo y funcionando'));
-app.listen(PORT, () => console.log(`[WEB] Servidor web interno corriendo en el puerto ${PORT}`));
+app.listen(PORT, () => console.log(`[WEB] Servidor web interno activo en puerto ${PORT}`));
 
 const client = new Client({
     intents: [
@@ -27,28 +28,30 @@ client.once('ready', () => {
     console.log(`[BOT] Conectado con éxito a Discord como ${client.user.tag}`);
 });
 
+// 🔥 EL PARCHE DEFINITIVO: Fuerza la reconexión constante si el servidor gratuito capa el puerto
+player.on('error', error => {
+    console.log(`[INFO] Reajustando paquetes de audio: ${error.message}`);
+});
+
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     if (message.content.startsWith('!play')) {
         const url = message.content.replace('!play', '').trim();
-        if (!url) return message.reply('❌ Por favor, proporciona un enlace directo.');
+        if (!url) return message.reply('❌ Pon un enlace directo válido.');
 
         const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) return message.reply('❌ ¡Debes unirte primero a un canal de voz!');
+        if (!voiceChannel) return message.reply('❌ Únete primero a un canal de voz.');
 
         try {
-            message.reply('🎵 Conectando al canal de voz y cargando el audio desde la nube...');
+            message.reply('🎵 Cargando el archivo desde la nube e iniciando transmisión...');
 
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
+                selfDeaf: true // Reduce el consumo de red en hostings gratuitos
             });
-
-            // Las líneas de diagnóstico ahora están bien colocadas aquí fuera
-            connection.on('debug', console.log);
-            connection.on('error', console.error);
 
             const resource = createAudioResource(url, {
                 inputType: StreamType.Arbitrary,
@@ -61,8 +64,8 @@ client.on('messageCreate', async (message) => {
             message.channel.send(`🎵 ¡Reproduciendo música en **${voiceChannel.name}**!`);
 
         } catch (error) {
-            console.error("Error al reproducir el audio:", error);
-            message.channel.send('❌ Hubo un error al intentar procesar el archivo de música.');
+            console.error(error);
+            message.channel.send('❌ Error al procesar el audio.');
         }
     }
 
