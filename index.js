@@ -79,9 +79,7 @@ console.log(`✅ FFmpeg encontrado: ${ffmpegPath}`);
 
 const r2Client = new S3Client({
     region: "auto",
-
     endpoint: process.env.R2_ENDPOINT,
-
     credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
@@ -180,15 +178,9 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    console.log(
-        `📦 Content-Type de R2: ${respuesta.ContentType || "desconocido"}`
-    );
+    console.log(`📦 Content-Type de R2: ${respuesta.ContentType || "desconocido"}`);
+    console.log(`📦 Tamaño del archivo: ${respuesta.ContentLength || "desconocido"} bytes`);
 
-    console.log(
-        `📦 Tamaño del archivo: ${respuesta.ContentLength || "desconocido"} bytes`
-    );
-
-    // Convertir el stream de R2 a un Readable Stream nativo de Node.js
     if (typeof respuesta.Body.transformToWebStream === "function") {
         return Readable.fromWebStream(respuesta.Body.transformToWebStream());
     }
@@ -207,30 +199,18 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     const ffmpeg = spawn(ffmpegPath, [
         "-hide_banner",
         "-loglevel", "warning",
-
-        // Entrada
         "-i", "pipe:0",
-
-        // Salida PCM compatible con Discord
         "-f", "s16le",
         "-ar", "48000",
         "-ac", "2",
-
         "pipe:1"
     ], {
-        stdio: [
-            "pipe",
-            "pipe",
-            "pipe"
-        ]
+        stdio: ["pipe", "pipe", "pipe"]
     });
 
     ffmpeg.stderr.on("data", (data) => {
         const texto = data.toString().trim();
-
-        if (texto) {
-            console.log(`🎛️ FFmpeg: ${texto}`);
-        }
+        if (texto) console.log(`🎛️ FFmpeg: ${texto}`);
     });
 
     ffmpeg.on("error", (error) => {
@@ -238,17 +218,12 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     });
 
     ffmpeg.on("close", (code, signal) => {
-        console.log(
-            `🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`
-        );
+        console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
     });
 
     streamR2.on("error", (error) => {
         console.error("❌ Error leyendo el archivo desde R2:", error);
-
-        try {
-            ffmpeg.stdin.destroy(error);
-        } catch {}
+        try { ffmpeg.stdin.destroy(error); } catch {}
     });
 
     streamR2.pipe(ffmpeg.stdin);
@@ -264,7 +239,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
 // ============================================================
 
 client.once("ready", () => {
-
     console.log("==========================================");
     console.log("🎵 MISOBOT ESTÁ CONECTADO");
     console.log(`🤖 Usuario: ${client.user.tag}`);
@@ -278,46 +252,30 @@ client.once("ready", () => {
 client.on("messageCreate", async (message) => {
 
     try {
-
         if (message.author.bot) return;
-
         if (!message.content.startsWith("!play")) return;
 
         const partes = message.content.trim().split(/\s+/);
-
         const nombreCancion = partes.slice(1).join(" ");
 
         if (!nombreCancion) {
-
-            await message.reply(
-                "❌ Escribe el nombre del archivo. Ejemplo:\n" +
-                "`!play cancion.mp3`"
-            );
-
+            await message.reply("❌ Escribe el nombre del archivo. Ejemplo:\n`!play cancion.mp3`");
             return;
         }
 
         const canalVoz = message.member?.voice?.channel;
 
         if (!canalVoz) {
-
-            await message.reply(
-                "❌ Primero tienes que entrar en un canal de voz."
-            );
-
+            await message.reply("❌ Primero tienes que entrar en un canal de voz.");
             return;
         }
 
         console.log("==========================================");
-        console.log(`🎵 Nueva reproducción solicitada`);
-        console.log(`📁 Archivo: ${nombreCancion}`);
-        console.log(`🏠 Servidor: ${message.guild.name}`);
-        console.log(`🔊 Canal: ${canalVoz.name}`);
+        console.log(`🎵 Nueva reproducción solicitada: ${nombreCancion}`);
+        console.log(`🏠 Servidor: ${message.guild.name} | 🔊 Canal: ${canalVoz.name}`);
         console.log("==========================================");
 
-        await message.reply(
-            `⏳ Preparando **${nombreCancion}**...`
-        );
+        await message.reply(`⏳ Preparando **${nombreCancion}**...`);
 
         const estado = obtenerEstadoServidor(message.guild.id);
 
@@ -325,129 +283,99 @@ client.on("messageCreate", async (message) => {
             !estado.connection ||
             estado.connection.state.status === VoiceConnectionStatus.Destroyed
         ) {
-
             console.log("🔊 Creando conexión de voz...");
 
             estado.connection = joinVoiceChannel({
                 channelId: canalVoz.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
-
                 selfDeaf: false,
                 selfMute: false
             });
 
-            estado.connection.on(
-                VoiceConnectionStatus.Ready,
-                () => {
-                    console.log("✅ Conexión de voz: READY");
-                }
-            );
+            // Evitar atascamiento en estado Connecting/Signalling
+            estado.connection.on(VoiceConnectionStatus.Connecting, () => {
+                console.log("📡 Conectando a la red de voz...");
+            });
 
-            estado.connection.on(
-                VoiceConnectionStatus.Disconnected,
-                () => {
-                    console.log("⚠️ Conexión de voz: DISCONNECTED");
-                }
-            );
+            estado.connection.on(VoiceConnectionStatus.Signalling, () => {
+                console.log("🔄 Negociando señal con Discord...");
+            });
 
-            estado.connection.on(
-                VoiceConnectionStatus.Destroyed,
-                () => {
-                    console.log("🛑 Conexión de voz: DESTROYED");
+            estado.connection.on(VoiceConnectionStatus.Ready, () => {
+                console.log("✅ Conexión de voz: READY");
+            });
+
+            estado.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+                console.log("⚠️ Conexión de voz: DISCONNECTED. Reintentando...");
+                try {
+                    await Promise.race([
+                        entersState(estado.connection, VoiceConnectionStatus.Signalling, 5000),
+                        entersState(estado.connection, VoiceConnectionStatus.Connecting, 5000)
+                    ]);
+                } catch {
+                    estado.connection.destroy();
                 }
-            );
+            });
+
+            estado.connection.on(VoiceConnectionStatus.Destroyed, () => {
+                console.log("🛑 Conexión de voz: DESTROYED");
+            });
 
             estado.connection.on("error", (error) => {
-                console.error(
-                    "❌ ERROR EN LA CONEXIÓN DE VOZ:",
-                    error
-                );
+                console.error("❌ ERROR EN LA CONEXIÓN DE VOZ:", error);
             });
         }
 
         console.log("⏳ Esperando conexión de voz...");
 
         try {
-
-            await entersState(
-                estado.connection,
-                VoiceConnectionStatus.Ready,
-                15000
-            );
-
+            await entersState(estado.connection, VoiceConnectionStatus.Ready, 20000);
             console.log("✅ Discord está listo para recibir audio.");
-
         } catch (error) {
+            console.error("❌ Discord no consiguió establecer la conexión de voz:", error);
+            
+            // Si la conexión falla, se destruye para permitir intentar de nuevo limpiamente la próxima vez
+            try { estado.connection.destroy(); } catch {}
+            estado.connection = null;
 
-            console.error("❌ Discord no consiguió establecer la conexión de voz:");
-            console.error(error);
-
-            return message.reply(
-                "❌ No he podido establecer correctamente la conexión de voz."
-            );
+            return message.reply("❌ No he podido conectar al canal de voz. Inténtalo de nuevo.");
         }
 
         if (estado.ffmpeg) {
-
             console.log("🛑 Deteniendo FFmpeg anterior...");
-
-            try {
-                estado.ffmpeg.kill("SIGKILL");
-            } catch {}
-
+            try { estado.ffmpeg.kill("SIGKILL"); } catch {}
             estado.ffmpeg = null;
         }
 
         const streamR2 = await obtenerArchivoR2(nombreCancion);
-
-        const audio = crearStreamAudio(
-            streamR2,
-            nombreCancion
-        );
+        const audio = crearStreamAudio(streamR2, nombreCancion);
 
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
 
         console.log("🎧 Creando recurso de audio...");
 
-        const recursoAudio = createAudioResource(
-            audio.stream,
-            {
-                inputType: StreamType.Raw,
-
-                metadata: {
-                    nombre: nombreCancion
-                }
-            }
-        );
+        const recursoAudio = createAudioResource(audio.stream, {
+            inputType: StreamType.Raw,
+            metadata: { nombre: nombreCancion }
+        });
 
         estado.connection.subscribe(estado.player);
-
         console.log("🔗 Reproductor conectado a Discord.");
 
         estado.player.play(recursoAudio);
-
         console.log("▶️ Comando PLAY enviado al reproductor.");
 
-        await message.channel.send(
-            `▶️ Reproduciendo: **${nombreCancion}**`
-        );
+        await message.channel.send(`▶️ Reproduciendo: **${nombreCancion}**`);
 
     } catch (error) {
-
         console.error("==========================================");
-        console.error("❌ ERROR GENERAL EN !play");
-        console.error(error);
+        console.error("❌ ERROR GENERAL EN !play", error);
         console.error("==========================================");
 
         try {
-
-            await message.channel.send(
-                "❌ Ha ocurrido un error al intentar reproducir el archivo. " +
-                "Mira los logs de Render para ver dónde se ha producido."
-            );
-
+            await message.channel.send("❌ Error procesando el archivo desde R2. Revisa el nombre del archivo.");
         } catch {}
     }
 });
