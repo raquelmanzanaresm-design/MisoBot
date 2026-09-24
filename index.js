@@ -65,23 +65,10 @@ client.on('messageCreate', async (message) => {
                 adapterCreator: message.guild.voiceAdapterCreator,
             });
 
-            // 🔥 AQUÍ ESTÁ EL TRUCO: Creamos un proceso FFmpeg que se reconecta solo si Archive.org corta la conexión
-            const ffmpegStream = new prism.FFmpeg({
-                args: [
-                    '-reconnect', '1',
-                    '-reconnect_streamed', '1',
-                    '-reconnect_delay_max', '5',
-                    '-i', url,
-                    '-analyze_duration', '0',
-                    '-loglevel', '0',
-                    '-f', 's16le',
-                    '-ar', '48000',
-                    '-ac', '2',
-                ],
+     const resource = createAudioResource(url, {
+                inputType: StreamType.Arbitrary,
+                inlineVolume: true
             });
-
-            // Convertimos ese stream a formato Opus (el que usa Discord)
-            const opusStream = ffmpegStream.pipe(new prism.opus.Encoder({ rate: 48000, channels: 2, frameSize: 960 }));
 
             // Cargamos el recurso usando nuestro stream protegido contra cortes
             const resource = createAudioResource(opusStream, {
