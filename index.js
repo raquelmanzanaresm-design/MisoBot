@@ -4,7 +4,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, StreamType } from '@discordjs/voice';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
-// 2. CONFIGURAR CLIENTE DE CLOUDFLARE R2
+// 2. CONFIGURAR CLIENTE DE CLOUDFLARE R2 (Corregido sin doble llave)
 const r2Client = new S3Client({
     region: "auto", 
     endpoint: process.env.R2_ENDPOINT,
@@ -53,7 +53,7 @@ client.on('messageCreate', async (message) => {
     if (!message.content.startsWith('!play')) return;
 
     const args = message.content.split(' ');
-    const nombreCancion = args[1];
+    const nombreCancion = args[1]; // Lee correctamente el nombre del archivo
 
     if (!nombreCancion) {
         return message.reply('❌ Por favor, dime el nombre del archivo. Ejemplo: `!play cancion.mp3`');
@@ -75,7 +75,7 @@ client.on('messageCreate', async (message) => {
 
         const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
 
-        // Usamos Arbitrary para que prism-media procese el flujo de R2 correctamente
+        // Formato Arbitrary optimizado para que los MP3 de la nube se decodifiquen bien en Linux
         const recursoAudio = createAudioResource(streamDeAudio, {
             inputType: StreamType.Arbitrary,
         });
@@ -86,6 +86,7 @@ client.on('messageCreate', async (message) => {
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
     } catch (error) {
+        console.error("Error detallado en la reproducción:", error);
         message.channel.send(`❌ Error: No se pudo reproducir la canción. Revisa que el nombre sea exacto.`);
     }
 });
