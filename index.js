@@ -44,9 +44,11 @@ client.on('messageCreate', async (message) => {
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
-                connection.on('debug', console.log);
-                connection.on('error', console.error);
             });
+
+            // Las líneas de diagnóstico ahora están bien colocadas aquí fuera
+            connection.on('debug', console.log);
+            connection.on('error', console.error);
 
             const resource = createAudioResource(url, {
                 inputType: StreamType.Arbitrary,
