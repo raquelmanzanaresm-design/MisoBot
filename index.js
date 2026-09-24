@@ -1,10 +1,10 @@
 // 1. IMPORTAR LIBRERÍAS (Formato ES Modules)
-import 'dotenv/config'; // Lee variables de entorno locales si usas un archivo .env
+import 'dotenv/config'; 
 import { Client, GatewayIntentBits } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, StreamType } from '@discordjs/voice';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
-// 2. CONFIGURAR CLIENTE DE CLOUDFLARE R2 (Corregido sin doble llave)
+// 2. CONFIGURAR CLIENTE DE CLOUDFLARE R2
 const r2Client = new S3Client({
     region: "auto", 
     endpoint: process.env.R2_ENDPOINT,
@@ -53,7 +53,7 @@ client.on('messageCreate', async (message) => {
     if (!message.content.startsWith('!play')) return;
 
     const args = message.content.split(' ');
-    const nombreCancion = args[1]; // Lee correctamente el nombre del archivo
+    const nombreCancion = args[1]; // Corrección para extraer la cadena exacta de texto
 
     if (!nombreCancion) {
         return message.reply('❌ Por favor, dime el nombre del archivo. Ejemplo: `!play cancion.mp3`');
@@ -71,23 +71,29 @@ client.on('messageCreate', async (message) => {
             channelId: canalVoz.id,
             guildId: message.guild.id,
             adapterCreator: message.guild.voiceAdapterCreator,
+            selfDeaf: false, // Forzamos a que el bot no se ensordezca a sí mismo en el servidor
+            selfMute: false
         });
 
         const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
 
-        // Formato Arbitrary optimizado para que los MP3 de la nube se decodifiquen bien en Linux
+        // Cambiamos el input a "Raw" para saltarnos restricciones del reproductor
+        // Esto fuerza a usar el decodificador ffmpeg-static que añadimos en Render
         const recursoAudio = createAudioResource(streamDeAudio, {
-            inputType: StreamType.Arbitrary,
+            inputType: StreamType.Raw,
+            inlineVolume: true
         });
+        
+        recursoAudio.volume.setVolume(1.0); // Aseguramos volumen al 100% de transmisión
 
         reproductor.play(recursoAudio);
-        conexionVoz.subscribe(reproductor);
+        conexionVoz.subscribe(reproductor); // Suscribimos la conexión al reproductor
 
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
     } catch (error) {
         console.error("Error detallado en la reproducción:", error);
-        message.channel.send(`❌ Error: No se pudo reproducir la canción. Revisa que el nombre sea exacto.`);
+        message.channel.send(`❌ Error: No se pudo reproducir la canción.`);
     }
 });
 
