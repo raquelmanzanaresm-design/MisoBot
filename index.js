@@ -44,6 +44,8 @@ client.on('messageCreate', async (message) => {
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
+                connection.on('debug', console.log);
+                connection.on('error', console.error);
             });
 
             const resource = createAudioResource(url, {
