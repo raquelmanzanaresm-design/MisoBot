@@ -3,7 +3,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, StreamType } from '@discordjs/voice';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import http from 'http'; // Librería nativa de Node.js para crear servidores web
+import http from 'http'; 
 
 // ==========================================
 // TRUCO PARA RENDER GRATIS: SERVIDOR WEB FALSO
@@ -90,12 +90,18 @@ client.on('messageCreate', async (message) => {
 
         const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
 
-          const recursoAudio = createAudioResource(streamDeAudio, {
+        // Cambiamos el modo de decodificación a un flujo en bruto compatible
+        const recursoAudio = createAudioResource(streamDeAudio, {
             inputType: StreamType.Arbitrary,
         });
 
-        reproductor.play(recursoAudio);
+        // Aseguramos la suscripción de voz antes de arrancar el reproductor
         conexionVoz.subscribe(reproductor);
+        
+        // Pequeño retraso de 500ms para dar tiempo a Render a enlazar el puerto de red
+        setTimeout(() => {
+            reproductor.play(recursoAudio);
+        }, 500);
 
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
