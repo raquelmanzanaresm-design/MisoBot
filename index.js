@@ -315,6 +315,7 @@ client.on(Events.MessageCreate, async (message) => {
 
         const recursoAudio = createAudioResource(audio.stream, {
             inputType: StreamType.Raw,
+            inlineVolume: false,
             metadata: { nombre: nombreCancion }
         });
 
