@@ -181,8 +181,8 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    // Retorna directamente el Stream nativo de AWS SDK v3
-    return respuesta.Body;
+    const arrayBuffer = await respuesta.Body.transformToByteArray();
+    return Readable.from(Buffer.from(arrayBuffer));
 }
 
 // ============================================================
@@ -194,8 +194,8 @@ function crearStreamAudio(streamR2, nombreArchivo) {
     console.log(`🎛️ Iniciando FFmpeg para: ${nombreArchivo}`);
 
     const ffmpeg = spawn(ffmpegPath, [
-        "-hide_banner",
-        "-loglevel", "warning",
+        "-analyzeduration", "0",
+        "-loglevel", "0",
         "-i", "pipe:0",
         "-f", "s16le",
         "-ar", "48000",
@@ -281,7 +281,7 @@ client.on(Events.MessageCreate, async (message) => {
                 channelId: canalVoz.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: true,
+                selfDeaf: false,
                 selfMute: false
             });
 
@@ -296,6 +296,12 @@ client.on(Events.MessageCreate, async (message) => {
             estado.connection.on("error", (err) => {
                 console.error("❌ ERROR EN LA CONEXIÓN DE VOZ:", err);
             });
+        }
+
+        try {
+            await entersState(estado.connection, VoiceConnectionStatus.Ready, 5000);
+        } catch (e) {
+            console.log("⚠️ Continuando sin esperar confirmación estricta de voz...");
         }
 
         estado.connection.subscribe(estado.player);
