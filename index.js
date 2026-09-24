@@ -3,12 +3,13 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, StreamType } from '@discordjs/voice';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"; // Librería oficial para crear enlaces de música
 import http from 'http'; 
 
 // ==========================================
 // TRUCO PARA RENDER GRATIS: SERVIDOR WEB FALSO
 // ==========================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000; // Puerto corregido para Render gratuito
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('MisoBot esta vivo y funcionando!\n');
@@ -39,18 +40,19 @@ const client = new Client({
 
 const reproductor = createAudioPlayer();
 
-// 4. FUNCIÓN PARA BUSCAR LA CANCIÓN EN CLOUDFLARE R2
-async function obtenerStreamDeMusica(nombreArchivo) {
+// 4. FUNCIÓN PARA GENERAR UN ENLACE DIRECTO DE MÚSICA DESDE R2
+async function obtenerUrlDeMusica(nombreArchivo) {
     try {
         const comando = new GetObjectCommand({
             Bucket: process.env.R2_BUCKET_NAME,
             Key: nombreArchivo
         });
 
-        const respuesta = await r2Client.send(comando);
-        return respuesta.Body; 
+        // Crea un enlace web directo al archivo que expira en 1 hora
+        const urlDescarga = await getSignedUrl(r2Client, comando, { expiresIn: 3600 });
+        return urlDescarga;
     } catch (error) {
-        console.error("Error al conectar con Cloudflare R2:", error);
+        console.error("Error al generar URL en Cloudflare R2:", error);
         throw error;
     }
 }
@@ -88,25 +90,21 @@ client.on('messageCreate', async (message) => {
             selfMute: false
         });
 
-        const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
+        // 1. Conseguimos el enlace de internet directo a tu archivo de Cloudflare
+        const urlDirectaMusica = await obtenerUrlDeMusica(nombreCancion);
 
-        // Cambiamos el modo de decodificación a un flujo en bruto compatible
-        const recursoAudio = createAudioResource(streamDeAudio, {
+        // 2. Le pasamos la URL web directamente a Discord (Igual que hacía con Archive.org)
+        const recursoAudio = createAudioResource(urlDirectaMusica, {
             inputType: StreamType.Arbitrary,
         });
 
-        // Aseguramos la suscripción de voz antes de arrancar el reproductor
+        reproductor.play(recursoAudio);
         conexionVoz.subscribe(reproductor);
-        
-        // Pequeño retraso de 500ms para dar tiempo a Render a enlazar el puerto de red
-        setTimeout(() => {
-            reproductor.play(recursoAudio);
-        }, 500);
 
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
     } catch (error) {
-        console.error("Error detallado en la reproducción:", error);
+        console.error("Error en la reproducción:", error);
         message.channel.send(`❌ Error: No se pudo reproducir la canción.`);
     }
 });
