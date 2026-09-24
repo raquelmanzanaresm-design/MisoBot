@@ -17,7 +17,7 @@ import {
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    demuxProbe
+    StreamType
 } from "@discordjs/voice";
 
 import {
@@ -183,7 +183,7 @@ async function obtenerArchivoR2(nombreArchivo) {
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO CON FFMPEG
+// 8. CONVERTIR AUDIO CON FFMPEG (S16LE / RAW PCM)
 // ============================================================
 
 function crearStreamAudio(streamR2, nombreArchivo) {
@@ -197,14 +197,19 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         "-ac", "2",
         "pipe:1"
     ], {
-        stdio: ["pipe", "pipe", "pipe"]
+        stdio: ["pipe", "pipe", "ignore"]
     });
 
-    ffmpeg.stderr.on("data", (data) => {
-        const texto = data.toString().trim();
-        if (texto.includes("time=")) {
-            // Silenciamos logs repetitivos para reducir carga de CPU en Render
+    // Control de errores en la entrada stdin (EPIPE)
+    ffmpeg.stdin.on("error", (err) => {
+        if (err.code !== "EPIPE") {
+            console.error("❌ Error en FFmpeg STDIN:", err);
         }
+    });
+
+    // Control de errores en el stream de R2
+    streamR2.on("error", (err) => {
+        console.error("❌ Error en el Stream de R2:", err);
     });
 
     ffmpeg.on("error", (error) => {
@@ -215,6 +220,7 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
     });
 
+    // Canalizar R2 a FFmpeg de forma segura
     streamR2.pipe(ffmpeg.stdin);
 
     return {
@@ -309,13 +315,10 @@ client.on(Events.MessageCreate, async (message) => {
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
 
-        console.log("🎧 Inspeccionando y creando recurso de audio de forma segura...");
+        console.log("🎧 Creando recurso de audio PCM Raw...");
 
-        // Analiza el flujo dinámicamente para ajustar los búferes y evitar el error TimeoutNegativeWarning
-        const { stream, type } = await demuxProbe(audio.stream);
-
-        const recursoAudio = createAudioResource(stream, {
-            inputType: type
+        const recursoAudio = createAudioResource(audio.stream, {
+            inputType: StreamType.Raw
         });
 
         estado.player.play(recursoAudio);
