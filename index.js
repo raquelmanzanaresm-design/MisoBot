@@ -178,8 +178,14 @@ async function obtenerArchivoR2(nombreArchivo) {
     console.log(`📦 Content-Type de R2: ${respuesta.ContentType || "desconocido"}`);
     console.log(`📦 Tamaño del archivo: ${respuesta.ContentLength || "desconocido"} bytes`);
 
-    if (typeof respuesta.Body.transformToWebStream === "function") {
-        return Readable.fromWebStream(respuesta.Body.transformToWebStream());
+    // Convertimos la respuesta de R2 a Stream de Node de manera compatible
+    if (typeof respuesta.Body.pipe === "function") {
+        return respuesta.Body;
+    }
+
+    if (typeof respuesta.Body.transformToByteArray === "function") {
+        const buffer = await respuesta.Body.transformToByteArray();
+        return Readable.from(Buffer.from(buffer));
     }
 
     return respuesta.Body;
@@ -276,7 +282,6 @@ client.on("messageCreate", async (message) => {
 
         const estado = obtenerEstadoServidor(message.guild.id);
 
-        // Si existe conexión previa en mal estado, la destruimos
         if (
             estado.connection && 
             estado.connection.state.status !== VoiceConnectionStatus.Ready
@@ -309,11 +314,10 @@ client.on("messageCreate", async (message) => {
             });
         }
 
-        // Intento de espera sin abortar el flujo entero en Render
         try {
             await entersState(estado.connection, VoiceConnectionStatus.Ready, 7000);
         } catch {
-            console.log("⚠️ La conexión tardó más de 7s, pero intentaremos enviar el audio directamente...");
+            console.log("⚠️ Conexión demorada, continuando envío directo...");
         }
 
         if (estado.ffmpeg) {
