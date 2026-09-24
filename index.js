@@ -3,6 +3,19 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, StreamType } from '@discordjs/voice';
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import http from 'http'; // Librería nativa de Node.js para crear servidores web
+
+// ==========================================
+// TRUCO PARA RENDER GRATIS: SERVIDOR WEB FALSO
+// ==========================================
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('MisoBot esta vivo y funcionando!\n');
+}).listen(PORT, () => {
+    console.log(`Servidor web falso escuchando en el puerto ${PORT}`);
+});
+// ==========================================
 
 // 2. CONFIGURAR CLIENTE DE CLOUDFLARE R2
 const r2Client = new S3Client({
@@ -53,7 +66,7 @@ client.on('messageCreate', async (message) => {
     if (!message.content.startsWith('!play')) return;
 
     const args = message.content.split(' ');
-    const nombreCancion = args[1]; // Corrección para extraer la cadena exacta de texto
+    const nombreCancion = args[1]; 
 
     if (!nombreCancion) {
         return message.reply('❌ Por favor, dime el nombre del archivo. Ejemplo: `!play cancion.mp3`');
@@ -71,23 +84,21 @@ client.on('messageCreate', async (message) => {
             channelId: canalVoz.id,
             guildId: message.guild.id,
             adapterCreator: message.guild.voiceAdapterCreator,
-            selfDeaf: false, // Forzamos a que el bot no se ensordezca a sí mismo en el servidor
+            selfDeaf: false,
             selfMute: false
         });
 
         const streamDeAudio = await obtenerStreamDeMusica(nombreCancion);
 
-        // Cambiamos el input a "Raw" para saltarnos restricciones del reproductor
-        // Esto fuerza a usar el decodificador ffmpeg-static que añadimos en Render
         const recursoAudio = createAudioResource(streamDeAudio, {
-            inputType: StreamType.Raw,
+            inputType: StreamType.Arbitrary, // Usamos Arbitrary para que procese el MP3 por streaming de forma fluida
             inlineVolume: true
         });
         
-        recursoAudio.volume.setVolume(1.0); // Aseguramos volumen al 100% de transmisión
+        recursoAudio.volume.setVolume(1.0); 
 
         reproductor.play(recursoAudio);
-        conexionVoz.subscribe(reproductor); // Suscribimos la conexión al reproductor
+        conexionVoz.subscribe(reproductor); 
 
         message.channel.send(`▶️ Reproduciendo ahora desde R2: **${nombreCancion}**`);
 
