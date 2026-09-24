@@ -30,7 +30,6 @@ import ffmpegPath from "ffmpeg-static";
 import { spawn } from "child_process";
 import http from "http";
 
-// Imprimir reporte de dependencias de voz para verificar encriptación
 console.log("📊 Reporte de dependencias de Voice:\n", generateDependencyReport());
 
 // ============================================================
@@ -187,7 +186,7 @@ async function obtenerArchivoR2(nombreArchivo) {
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO CON FFMPEG
+// 8. CONVERTIR AUDIO A OGG OPUS DIRECTAMENTE
 // ============================================================
 
 function crearStreamAudio(streamR2, nombreArchivo) {
@@ -196,9 +195,11 @@ function crearStreamAudio(streamR2, nombreArchivo) {
 
     const ffmpeg = spawn(ffmpegPath, [
         "-i", "pipe:0",
-        "-f", "s16le",
+        "-c:a", "libopus",
+        "-b:a", "96k",
         "-ar", "48000",
         "-ac", "2",
+        "-f", "ogg",
         "pipe:1"
     ], {
         stdio: ["pipe", "pipe", "pipe"]
@@ -311,11 +312,11 @@ client.on(Events.MessageCreate, async (message) => {
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
 
-        console.log("🎧 Creando recurso de audio...");
+        console.log("🎧 Creando recurso de audio OggOpus...");
 
+        // Usamos StreamType.OggOpus para transmisión directa a Discord
         const recursoAudio = createAudioResource(audio.stream, {
-            inputType: StreamType.Raw,
-            inlineVolume: false,
+            inputType: StreamType.OggOpus,
             metadata: { nombre: nombreCancion }
         });
 
