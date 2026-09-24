@@ -17,8 +17,7 @@ import {
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    StreamType,
-    generateDependencyReport
+    demuxProbe
 } from "@discordjs/voice";
 
 import {
@@ -29,8 +28,6 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "child_process";
 import http from "http";
-
-console.log("📊 Reporte de dependencias de Voice:\n", generateDependencyReport());
 
 // ============================================================
 // 1. SERVIDOR HTTP PARA RENDER
@@ -186,7 +183,7 @@ async function obtenerArchivoR2(nombreArchivo) {
 }
 
 // ============================================================
-// 8. CONVERTIR AUDIO A OGG OPUS DIRECTAMENTE
+// 8. CONVERTIR AUDIO CON FFMPEG
 // ============================================================
 
 function crearStreamAudio(streamR2, nombreArchivo) {
@@ -195,11 +192,9 @@ function crearStreamAudio(streamR2, nombreArchivo) {
 
     const ffmpeg = spawn(ffmpegPath, [
         "-i", "pipe:0",
-        "-c:a", "libopus",
-        "-b:a", "96k",
+        "-f", "s16le",
         "-ar", "48000",
         "-ac", "2",
-        "-f", "ogg",
         "pipe:1"
     ], {
         stdio: ["pipe", "pipe", "pipe"]
@@ -207,7 +202,9 @@ function crearStreamAudio(streamR2, nombreArchivo) {
 
     ffmpeg.stderr.on("data", (data) => {
         const texto = data.toString().trim();
-        if (texto) console.log(`🎛️ FFmpeg: ${texto}`);
+        if (texto.includes("time=")) {
+            // Silenciamos logs repetitivos para reducir carga de CPU en Render
+        }
     });
 
     ffmpeg.on("error", (error) => {
@@ -312,12 +309,13 @@ client.on(Events.MessageCreate, async (message) => {
         estado.ffmpeg = audio.process;
         estado.archivoActual = nombreCancion;
 
-        console.log("🎧 Creando recurso de audio OggOpus...");
+        console.log("🎧 Inspeccionando y creando recurso de audio de forma segura...");
 
-        // Usamos StreamType.OggOpus para transmisión directa a Discord
-        const recursoAudio = createAudioResource(audio.stream, {
-            inputType: StreamType.OggOpus,
-            metadata: { nombre: nombreCancion }
+        // Analiza el flujo dinámicamente para ajustar los búferes y evitar el error TimeoutNegativeWarning
+        const { stream, type } = await demuxProbe(audio.stream);
+
+        const recursoAudio = createAudioResource(stream, {
+            inputType: type
         });
 
         estado.player.play(recursoAudio);
