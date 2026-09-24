@@ -411,17 +411,27 @@ client.on("messageCreate", async (message) => {
 
         } catch (error) {
 
-            console.error(
-                "❌ Discord no consiguió establecer la conexión de voz:",
-                error
-            );
+          console.error("❌ Discord no consiguió establecer la conexión de voz:");
+    console.error(error);
 
-            await message.channel.send(
-                "❌ No he podido establecer correctamente la conexión de voz."
-            );
+    console.log("🔎 Estado de la conexión:", estado.connection.state.status);
 
-            return;
-        }
+    if (estado.connection.state.status === VoiceConnectionStatus.Signalling) {
+        console.log("📡 Discord sigue en estado SIGNALLING.");
+    }
+
+    if (estado.connection.state.status === VoiceConnectionStatus.Connecting) {
+        console.log("🔄 Discord sigue en estado CONNECTING.");
+    }
+
+    if (estado.connection.state.status === VoiceConnectionStatus.Disconnected) {
+        console.log("🔴 Discord está en estado DISCONNECTED.");
+    }
+
+    return message.reply(
+        "❌ No he podido establecer correctamente la conexión de voz."
+    );
+}
 
         // ----------------------------------------------------
         // PARAR FFMPEG ANTERIOR SI EXISTE
