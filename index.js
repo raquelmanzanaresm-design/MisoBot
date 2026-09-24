@@ -7,7 +7,8 @@ import { Readable } from "stream";
 
 import {
     Client,
-    GatewayIntentBits
+    GatewayIntentBits,
+    Events
 } from "discord.js";
 
 import {
@@ -116,7 +117,6 @@ function obtenerEstadoServidor(guildId) {
 
     if (!servidores.has(guildId)) {
 
-        // Configuramos el reproductor para NUNCA auto-pausarse
         const player = createAudioPlayer({
             behaviors: {
                 noSubscriber: NoSubscriberBehavior.Play
@@ -181,9 +181,8 @@ async function obtenerArchivoR2(nombreArchivo) {
         throw new Error("R2 no ha devuelto ningún contenido.");
     }
 
-    // Convertimos la respuesta a un Stream de Node a partir del ArrayBuffer
-    const arrayBuffer = await respuesta.Body.transformToByteArray();
-    return Readable.from(Buffer.from(arrayBuffer));
+    // Retorna directamente el Stream nativo de AWS SDK v3
+    return respuesta.Body;
 }
 
 // ============================================================
@@ -219,11 +218,6 @@ function crearStreamAudio(streamR2, nombreArchivo) {
         console.log(`🎛️ FFmpeg finalizado. Código: ${code}, señal: ${signal}`);
     });
 
-    streamR2.on("error", (error) => {
-        console.error("❌ Error leyendo el archivo desde R2:", error);
-        try { ffmpeg.stdin.destroy(error); } catch {}
-    });
-
     streamR2.pipe(ffmpeg.stdin);
 
     return {
@@ -236,7 +230,7 @@ function crearStreamAudio(streamR2, nombreArchivo) {
 // 9. EVENTO READY
 // ============================================================
 
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
     console.log("==========================================");
     console.log("🎵 MISOBOT ESTÁ CONECTADO");
     console.log(`🤖 Usuario: ${client.user.tag}`);
@@ -247,7 +241,7 @@ client.once("ready", () => {
 // 10. COMANDOS
 // ============================================================
 
-client.on("messageCreate", async (message) => {
+client.on(Events.MessageCreate, async (message) => {
 
     try {
         if (message.author.bot) return;
@@ -304,9 +298,7 @@ client.on("messageCreate", async (message) => {
             });
         }
 
-        // Suscribimos la conexión AL REPRODUCTOR antes de enviar audio
         estado.connection.subscribe(estado.player);
-        console.log("🔗 Reproductor suscrito a la conexión de Discord.");
 
         if (estado.ffmpeg) {
             console.log("🛑 Deteniendo FFmpeg anterior...");
