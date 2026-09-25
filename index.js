@@ -240,8 +240,17 @@ client.on(Events.MessageCreate, async (message) => {
                 selfMute: false
             });
 
-            estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
-                console.log("⚠️ Conexión de voz: DISCONNECTED");
+            // Manejo de reconexiones automáticas si Discord cambia de servidor de voz
+            estado.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+                try {
+                    await Promise.race([
+                        entersState(estado.connection, VoiceConnectionStatus.Signalling, 5_000),
+                        entersState(estado.connection, VoiceConnectionStatus.Connecting, 5_000),
+                    ]);
+                } catch (error) {
+                    try { estado.connection.destroy(); } catch {}
+                    estado.connection = null;
+                }
             });
 
             estado.connection.on("error", (err) => {
@@ -249,18 +258,7 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        try {
-            console.log("⏳ Esperando estado READY de la conexión de voz...");
-            await entersState(estado.connection, VoiceConnectionStatus.Ready, 15_000);
-            console.log("✅ Conexión de voz totalmente establecida.");
-        } catch (errorState) {
-            console.error("❌ No se pudo establecer la conexión de voz a tiempo:", errorState);
-            try { estado.connection.destroy(); } catch {}
-            estado.connection = null;
-            await message.reply("❌ Tiempo de espera agotado al conectar la voz con Discord.");
-            return;
-        }
-
+        // Vincular el reproductor a la conexión
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpegStream) {
