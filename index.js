@@ -17,7 +17,8 @@ import {
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    StreamType
+    StreamType,
+    entersState
 } from "@discordjs/voice";
 
 import {
@@ -223,10 +224,9 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`🏠 Servidor: ${message.guild.name} | 🔊 Canal: ${canalVoz.name}`);
         console.log("==========================================");
 
-        await message.reply(`⏳ Transmitiendo **${nombreCancion}**...`);
-
         const estado = obtenerEstadoServidor(message.guild.id);
 
+        // 1. Conectar al canal si no estamos conectados o si se destruyó la conexión
         if (
             !estado.connection || 
             estado.connection.state.status === VoiceConnectionStatus.Destroyed
@@ -241,10 +241,6 @@ client.on(Events.MessageCreate, async (message) => {
                 selfMute: false
             });
 
-            estado.connection.on(VoiceConnectionStatus.Ready, () => {
-                console.log("✅ Conexión de voz: READY");
-            });
-
             estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
                 console.log("⚠️ Conexión de voz: DISCONNECTED");
             });
@@ -254,6 +250,18 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
+        // 2. ESPERAR A QUE LA CONEXIÓN ESTÉ 'READY' CON TIMEOUT
+        try {
+            console.log("⏳ Esperando estado READY de la conexión de voz...");
+            await entersState(estado.connection, VoiceConnectionStatus.Ready, 15_000);
+            console.log("✅ Conexión de voz totalmente establecida.");
+        } catch (errorState) {
+            console.error("❌ No se pudo establecer la conexión de voz a tiempo:", errorState);
+            await message.reply("❌ No pude unirme al canal de voz. Revisa los permisos del bot.");
+            return;
+        }
+
+        // 3. Suscribir el reproductor
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpegStream) {
@@ -262,9 +270,9 @@ client.on(Events.MessageCreate, async (message) => {
             estado.ffmpegStream = null;
         }
 
+        // 4. Solicitar el audio a R2 y procesarlo
         const r2Stream = await obtenerArchivoR2Stream(nombreCancion);
 
-        // FFmpeg codifica directamente a Opus (Ogg container)
         const ffmpegStream = new prism.FFmpeg({
             args: [
                 "-i", "pipe:0",
@@ -286,7 +294,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         console.log("🎧 Creando recurso de audio en formato OggOpus...");
 
-        // Discord reproduce OggOpus de forma nativa sin gasto extra de CPU/RAM
         const recursoAudio = createAudioResource(audioPipe, {
             inputType: StreamType.OggOpus
         });
@@ -302,7 +309,7 @@ client.on(Events.MessageCreate, async (message) => {
         console.error("==========================================");
 
         try {
-            await message.channel.send("❌ Error al procesar el audio de R2.");
+            await message.channel.send("❌ Error al procesar el archivo de R2.");
         } catch {}
     }
 });
