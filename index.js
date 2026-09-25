@@ -226,7 +226,6 @@ client.on(Events.MessageCreate, async (message) => {
 
         const estado = obtenerEstadoServidor(message.guild.id);
 
-        // 1. Conectar al canal si no estamos conectados o si se destruyó la conexión
         if (
             !estado.connection || 
             estado.connection.state.status === VoiceConnectionStatus.Destroyed
@@ -250,18 +249,18 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        // 2. ESPERAR A QUE LA CONEXIÓN ESTÉ 'READY' CON TIMEOUT
         try {
             console.log("⏳ Esperando estado READY de la conexión de voz...");
             await entersState(estado.connection, VoiceConnectionStatus.Ready, 15_000);
             console.log("✅ Conexión de voz totalmente establecida.");
         } catch (errorState) {
             console.error("❌ No se pudo establecer la conexión de voz a tiempo:", errorState);
-            await message.reply("❌ No pude unirme al canal de voz. Revisa los permisos del bot.");
+            try { estado.connection.destroy(); } catch {}
+            estado.connection = null;
+            await message.reply("❌ Tiempo de espera agotado al conectar la voz con Discord.");
             return;
         }
 
-        // 3. Suscribir el reproductor
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpegStream) {
@@ -270,7 +269,6 @@ client.on(Events.MessageCreate, async (message) => {
             estado.ffmpegStream = null;
         }
 
-        // 4. Solicitar el audio a R2 y procesarlo
         const r2Stream = await obtenerArchivoR2Stream(nombreCancion);
 
         const ffmpegStream = new prism.FFmpeg({
