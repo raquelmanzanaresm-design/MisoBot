@@ -17,8 +17,7 @@ import {
     createAudioResource,
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    StreamType,
-    entersState
+    StreamType
 } from "@discordjs/voice";
 
 import {
@@ -240,17 +239,8 @@ client.on(Events.MessageCreate, async (message) => {
                 selfMute: false
             });
 
-            // Manejo de reconexiones automáticas si Discord cambia de servidor de voz
-            estado.connection.on(VoiceConnectionStatus.Disconnected, async () => {
-                try {
-                    await Promise.race([
-                        entersState(estado.connection, VoiceConnectionStatus.Signalling, 5_000),
-                        entersState(estado.connection, VoiceConnectionStatus.Connecting, 5_000),
-                    ]);
-                } catch (error) {
-                    try { estado.connection.destroy(); } catch {}
-                    estado.connection = null;
-                }
+            estado.connection.on(VoiceConnectionStatus.Disconnected, () => {
+                console.log("⚠️ Conexión de voz: DISCONNECTED");
             });
 
             estado.connection.on("error", (err) => {
@@ -258,7 +248,6 @@ client.on(Events.MessageCreate, async (message) => {
             });
         }
 
-        // Vincular el reproductor a la conexión
         estado.connection.subscribe(estado.player);
 
         if (estado.ffmpegStream) {
@@ -269,11 +258,13 @@ client.on(Events.MessageCreate, async (message) => {
 
         const r2Stream = await obtenerArchivoR2Stream(nombreCancion);
 
+        // FFmpeg emite WebM Opus con control de bitrate estricto para evitar time desync
         const ffmpegStream = new prism.FFmpeg({
             args: [
                 "-i", "pipe:0",
-                "-acodec", "libopus",
-                "-f", "opus",
+                "-c:a", "libopus",
+                "-b:a", "96k",
+                "-f", "webm",
                 "-ar", "48000",
                 "-ac", "2"
             ]
@@ -288,10 +279,10 @@ client.on(Events.MessageCreate, async (message) => {
 
         const audioPipe = r2Stream.pipe(ffmpegStream);
 
-        console.log("🎧 Creando recurso de audio en formato OggOpus...");
+        console.log("🎧 Creando recurso de audio en formato WebmOpus...");
 
         const recursoAudio = createAudioResource(audioPipe, {
-            inputType: StreamType.OggOpus
+            inputType: StreamType.WebmOpus
         });
 
         estado.player.play(recursoAudio);
